@@ -1,4 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <!-- Test-only: the TCP-01 and DNS-01 device tests contact the network. -->
+  <uses-permission android:name="android.permission.INTERNET" />
   <application>
     <!-- Test-only: writes records in its own process so tests can kill it. -->
     <service

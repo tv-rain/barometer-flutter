@@ -184,7 +184,8 @@ class RecordStoreDeviceTest {
     }
 
     private fun writerPid(): Int? {
-        val am = context.getSystemService(ActivityManager::class.java)
+        // The class-typed getSystemService is API 23; this one also runs on API 21.
+        val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
         return am.runningAppProcesses?.firstOrNull { it.processName.endsWith(":writer") }?.pid
     }
 
