@@ -1,0 +1,96 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+env:
+  FLUTTER_VERSION: "3.47.6"
+  GO_VERSION: "1.26.0"
+
+jobs:
+  dart:
+    name: Format, analyze and test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Set up Flutter
+        run: |
+          git clone --quiet --depth 1 --branch "$FLUTTER_VERSION" https://github.com/flutter/flutter.git "$RUNNER_TEMP/flutter"
+          echo "$RUNNER_TEMP/flutter/bin" >> "$GITHUB_PATH"
+      - name: Report Flutter version
+        run: flutter --version
+      - name: Get packages
+        run: |
+          flutter pub get
+          (cd example && flutter pub get)
+      - name: Check formatting
+        run: dart format --output=none --set-exit-if-changed .
+      - name: Analyze
+        run: flutter analyze
+      - name: Test example
+        working-directory: example
+        run: flutter test
+
+  build:
+    name: Build example (${{ matrix.target }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: android
+            runner: ubuntu-24.04
+          - target: apple
+            runner: macos-15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+      - name: Configure Android toolchain
+        if: matrix.target == 'android'
+        shell: bash
+        run: |
+          echo "JAVA_HOME=$JAVA_HOME_17_X64" >> "$GITHUB_ENV"
+          echo "$JAVA_HOME_17_X64/bin" >> "$GITHUB_PATH"
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "ndk;28.2.13676358"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
+      - name: Report Apple toolchain
+        if: matrix.target == 'apple'
+        run: |
+          xcodebuild -version
+          pod --version
+      - name: Build native Barometer library
+        run: bash scripts/build-native.sh ${{ matrix.target }}
+      - name: Set up Flutter
+        run: |
+          git clone --quiet --depth 1 --branch "$FLUTTER_VERSION" https://github.com/flutter/flutter.git "$RUNNER_TEMP/flutter"
+          echo "$RUNNER_TEMP/flutter/bin" >> "$GITHUB_PATH"
+      - name: Report Flutter version
+        run: flutter --version
+      - name: Build Android example
+        if: matrix.target == 'android'
+        working-directory: example
+        run: flutter build apk --debug
+      - name: Build iOS example
+        if: matrix.target == 'apple'
+        working-directory: example
+        run: |
+          flutter build ios --debug --no-codesign
+          flutter build ios --debug --simulator
+      - name: Check tracked files remain unchanged
+        run: git diff --exit-code
