@@ -39,8 +39,9 @@ internal class RecordStoreException : Exception("record storage unavailable")
  * its `timeoutMillis`. A call still queued at its deadline is withdrawn and never runs; a call
  * already running finishes before any later call starts. Either way the caller gets an error,
  * so an uncertain outcome is never reported as success, and an abandoned write cannot land
- * after a later delete (clearing) or [close]. While a clearing marker (class 4) is stored, puts
- * of the other classes are refused.
+ * after a later delete (clearing) or [close]. The facade hands calls over in the order Go
+ * issues them, so arrival order is issue order. While a clearing marker (class 4) is stored,
+ * puts of the other classes are refused.
  *
  * A storage scope has one owner at a time, across threads and processes: a second [open] of a
  * scope that is open fails. Calls, [open] and [close] must not be made on the UI thread; they
