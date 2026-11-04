@@ -31,7 +31,11 @@ Each output has a `.build-info.txt` file that records the `barometer-go` commit 
 
 To build from a local `barometer-go` checkout instead, set `BAROMETER_GO_DIR`. A local build embeds the checkout path in the library's Go build information, so do not share it outside the team.
 
-The Kotlin and Swift sources name gomobile-generated classes only in `BarometerBinding.kt` and `BarometerBinding.swift`. Today these are the root package's default names (`barometer.Client`, `BarometerClient`). When `barometer-go` adds the `barometermobile` facade, these files change to the facade's names. In the TV Rain application's umbrella build, the generated classes come from the umbrella artifact instead of the standalone library.
+The Kotlin and Swift sources name gomobile-generated classes only in `BarometerBinding.kt` and `BarometerBinding.swift`. They name the `barometermobile` facade ([decision 0014](https://github.com/tv-rain/barometer/blob/main/docs/decisions/0014-gomobile-facade-and-platform-matrix.md)), for example `barometermobile.Records` and `BarometermobileClient`. In the TV Rain application's umbrella build, the generated classes come from the umbrella artifact instead of the standalone library.
+
+## Android State Storage
+
+The Android backend of the facade's `Records` port (`RecordStore.kt`) keeps the replay records, run ledger, pending bundles and clearing marker of one storage scope as one file per record under the application's `no_backup` directory (`Context.getNoBackupFilesDir()`), which Android excludes from cloud backup and device-to-device transfer. The plugin therefore adds no backup rules to the host application's manifest. A put writes a temporary file and renames it over the record, so a process kill leaves the earlier or the new value. All calls run in arrival order on one worker thread and wait at most their `timeoutMillis`; a call still queued at its deadline never runs, a running one finishes before any later call, and the caller gets an error in both cases. While a clearing marker is stored, other puts are refused. A scope has one owner across threads and processes, and calls on the UI thread fail instead of blocking it. Durability across power loss or a full disk, OS or device clearing and reinstallation are not yet validated.
 
 ## Build and Validate
 
@@ -48,6 +52,9 @@ flutter test
 flutter build apk --debug
 flutter build ios --debug --no-codesign
 flutter build ios --debug --simulator
+cd android
+./gradlew :barometer_flutter:testDebugUnitTest
+./gradlew :barometer_flutter:connectedDebugAndroidTest   # needs a running emulator or device
 ```
 
 CI runs the same steps on `ubuntu-24.04` for Android and `macos-15` for iOS.
