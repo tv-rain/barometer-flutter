@@ -1,0 +1,9 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <application>
+    <!-- Test-only: writes records in its own process so tests can kill it. -->
+    <service
+        android:name="com.tvrain.barometer_flutter.WriterService"
+        android:exported="false"
+        android:process=":writer" />
+  </application>
+</manifest>

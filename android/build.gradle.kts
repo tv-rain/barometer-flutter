@@ -56,6 +56,7 @@ android {
 
     defaultConfig {
         minSdk = 21
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 }
 
@@ -68,4 +69,10 @@ kotlin {
 dependencies {
     // Built by scripts/build-native.sh; not tracked in Git.
     implementation("com.tvrain.barometer:barometer:local")
+
+    // Test-only; not part of the plugin's runtime dependencies.
+    testImplementation("junit:junit:4.13.2")
+    androidTestImplementation("junit:junit:4.13.2")
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
 }
