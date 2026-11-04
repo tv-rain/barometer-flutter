@@ -14,4 +14,5 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- `scripts/barometer-go.revision` pins `barometer-go` `8f8d7c4a01159e654f58bd7d340cd6e4533069f2`. With it the facade hands `Records` and `LinkageKeyStore` callbacks to native code in the order Go issues them and never hands over a call past its deadline, so a write abandoned before a clear can no longer reach `RecordStore` after it; `StartRun` also fails closed once its lifecycle deadline has passed. The README and `RecordStore` documentation now say which side guarantees the order. No Kotlin, Swift or Dart behavior changes.
 - `scripts/barometer-go.revision` pins `barometer-go` `52789565c85f9d14d7b2ce1d5e42f85b11cea753`, the merge of the `barometermobile` gomobile facade (DEV-723). The native library now exposes only the facade, so `BarometerBinding.kt` and `BarometerBinding.swift` name `barometermobile.Client` and `BarometermobileClient` (DEV-724).
