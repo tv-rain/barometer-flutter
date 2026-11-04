@@ -1,3 +1,5 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
   package="com.tvrain.barometer_flutter">
+  <!-- Read by the network adapter for coarse access state; a normal, install-time permission. -->
+  <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 </manifest>
