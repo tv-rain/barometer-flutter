@@ -27,8 +27,19 @@ require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelpe
 
 flutter_ios_podfile_setup
 
+# Umbrella mode (see the README): with BAROMETER_FLUTTER_UMBRELLA_MODULE set, the plugin
+# compiles against the umbrella framework vendored by the local barometer_example_umbrella
+# pod, and pods link statically so that the facade is linked once, into the application.
+umbrella_mode = !ENV.fetch('BAROMETER_FLUTTER_UMBRELLA_MODULE', '').strip.empty?
+ENV['BAROMETER_FLUTTER_UMBRELLA_POD'] = 'barometer_example_umbrella' if umbrella_mode
+
 target 'Runner' do
-  use_frameworks!
+  if umbrella_mode
+    use_frameworks! :linkage => :static
+    pod 'barometer_example_umbrella', :path => 'umbrella'
+  else
+    use_frameworks!
+  end
 
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
   target 'RunnerTests' do

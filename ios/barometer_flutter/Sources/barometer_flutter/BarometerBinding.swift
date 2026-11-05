@@ -1,10 +1,15 @@
-import Barometer
+#if BAROMETER_UMBRELLA
+  // Umbrella mode: the facade inside the host-supplied umbrella framework (see the podspec).
+  import BarometerUmbrella
+#else
+  import Barometer
+#endif
 import Foundation
 
 /// The only file that names gomobile-generated types: the `barometermobile` facade.
 ///
-/// The types come from the standalone `Barometer.xcframework` or, in an umbrella build,
-/// from the umbrella artifact. Naming a type makes the plugin link against the framework
+/// The types come from the standalone `Barometer.xcframework` or, in umbrella mode, from
+/// the host-supplied umbrella framework. Naming a type makes the plugin link against the framework
 /// without calling into Go; constructing a facade value does.
 enum BarometerBinding {
   static let clientType: BarometermobileClient.Type = BarometermobileClient.self

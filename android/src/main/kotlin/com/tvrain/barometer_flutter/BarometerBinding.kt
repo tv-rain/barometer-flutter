@@ -21,8 +21,8 @@ import java.io.Closeable
 /**
  * The only file that names gomobile-generated classes: the `barometermobile` facade.
  *
- * The classes come from the standalone `Barometer.aar` or, in an umbrella build, from the
- * umbrella artifact. Naming a class at compile time neither loads the native library nor
+ * The classes come from the standalone `Barometer.aar` or, in umbrella mode, from the
+ * host-supplied umbrella artifact; the Java package is the same in both. Naming a class at compile time neither loads the native library nor
  * runs Go code; constructing a facade value does.
  */
 internal object BarometerBinding {

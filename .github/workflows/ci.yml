@@ -130,3 +130,24 @@ jobs:
           flutter test integration_test -d "$udid" --verbose
       - name: Check tracked files remain unchanged
         run: git diff --exit-code
+      # Umbrella mode, built last because pod install may rewrite the Xcode project. The
+      # standalone library stands in for an umbrella artifact: it binds the same facade.
+      - name: Build Android example in umbrella mode
+        if: matrix.target == 'android'
+        working-directory: example
+        run: flutter build apk --debug -P barometerUmbrellaArtifact=com.tvrain.barometer:barometer:local -P "barometerUmbrellaRepository=$GITHUB_WORKSPACE/android/libs/maven"
+      - name: Build iOS example in umbrella mode
+        if: matrix.target == 'apple'
+        working-directory: example
+        env:
+          BAROMETER_FLUTTER_UMBRELLA_MODULE: Barometer
+        run: |
+          mkdir -p ios/umbrella/Frameworks
+          ln -s ../../../../ios/Frameworks/Barometer.xcframework ios/umbrella/Frameworks/Barometer.xcframework
+          flutter clean
+          flutter pub get
+          (cd ios && pod install)
+          grep -q 'barometer_flutter/Umbrella' ios/Podfile.lock
+          flutter build ios --debug --simulator
+          # The plugin is linked statically and embeds no library of its own.
+          test ! -e build/ios/iphonesimulator/Runner.app/Frameworks/barometer_flutter.framework
