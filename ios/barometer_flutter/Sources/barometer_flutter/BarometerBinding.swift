@@ -69,6 +69,10 @@ final class BarometerClient {
     try string { facade.installEmbeddedTask(issuer, taskJSON: task, error: $0) }
   }
 
+  func installRemoteTask(_ signedPackage: Data) throws -> String {
+    try string { facade.installRemoteTask(signedPackage, error: $0) }
+  }
+
   func admitTask(_ taskJSON: String, sourceRef: String) throws -> String {
     try string { facade.admitTask(taskJSON, sourceRef: sourceRef, error: $0) }
   }
@@ -81,11 +85,17 @@ final class BarometerClient {
     try string { facade.runState(runHandle, error: $0) }
   }
 
+  func cancelRun(_ runHandle: String) throws { try call { try facade.cancelRun(runHandle) } }
+
   func nextBundle() throws -> String { try string { facade.nextBundle($0) } }
 
   func acknowledgeBundle(_ bundleID: String) throws {
     try call { try facade.acknowledgeBundle(bundleID) }
   }
+
+  func setProxy(_ proxyJSON: String) throws { try call { try facade.setProxy(proxyJSON) } }
+
+  func clearProxy() throws { try call { try facade.clearProxy() } }
 
   func clearMeasurementData() throws { try call { try facade.clearMeasurementData() } }
 
