@@ -48,12 +48,31 @@ Run on 2026-11-05 on the same host and library build, with the same command, on 
 
 Run on 2026-11-05 from `example` with `flutter test integration_test -d <udid>`, Flutter 3.47.6 and Xcode 27.0 on an Apple silicon host, with the library above. `barometer_flow_test.dart` (1 test) launches the example, checks that nothing has run, presses **Run tcp-01** and **Run dns-01**, and checks that each run reaches `terminal` through `runState` polling from Dart, that its bundle holds one result with execution state `completed` and observation type `tcp_connect` or `dns_query` from platform `ios`, and that no bundle is pending after the acknowledgement. The trusted local document and tasks are the example's synthetic files, written into the application bundle by the Runner's **Generate Barometer Resources** build phase. TCP-01 contacts `1.1.1.1:443` once and DNS-01 resolves `example.org` once.
 
-| Target | Model | OS | Architecture | Integration test |
-|---|---|---|---|---|
-| Simulator, runtime `iOS 26.5 (23F77)` | iPhone 17 Pro | iOS 26.5 | `arm64` | 1 of 1 passed |
-| CI simulator on `macos-15`, runtime `iOS 26.2` | iPhone 16 | iOS 26.2 | `arm64` | 1 of 1 passed |
+| Target | Model | OS | Architecture | Mode | Integration test |
+|---|---|---|---|---|---|
+| Simulator, runtime `iOS 26.5 (23F77)` | iPhone 17 Pro | iOS 26.5 | `arm64` | Standalone | 1 of 1 passed |
+| CI simulator on `macos-15`, runtime `iOS 26.2` | iPhone 16 | iOS 26.2 | `arm64` | Standalone | 1 of 1 passed |
+| Physical device, connected by USB | iPhone 13 (`iPhone14,5`) | iOS 27.0.1 (24A446) | `arm64` | Standalone | 1 of 1 passed |
+| Physical device, connected by USB | iPhone 13 (`iPhone14,5`) | iOS 27.0.1 (24A446) | `arm64` | Umbrella | 1 of 1 passed |
 
-The CI row ran with Flutter 3.47.8 and the runner's Xcode (reported as 16.4), with a library built in the same job by `scripts/build-native.sh apple` at the same pin; CI runs it on every pull request on the `iPhone <number>` simulator of the newest installed iOS runtime. An earlier CI attempt on an iPhone SE (3rd generation) simulator of the same runtime built the example and then made no progress for 19 minutes before it was cancelled; the step now has a 25-minute limit and logs verbosely. This is the first measurement run through the method channel on iOS, and the first run of the plugin inside the Flutter application with Dart driving it. No device, older runtime or `x86_64` simulator ran it.
+The CI row ran with Flutter 3.47.8 and the runner's Xcode (reported as 16.4), with a library built in the same job by `scripts/build-native.sh apple` at the same pin; CI runs it on every pull request on the `iPhone <number>` simulator of the newest installed iOS runtime. An earlier CI attempt on an iPhone SE (3rd generation) simulator of the same runtime built the example and then made no progress for 19 minutes before it was cancelled; the step now has a 25-minute limit and logs verbosely. This is the first measurement run through the method channel on iOS, and the first run of the plugin inside the Flutter application with Dart driving it. No older runtime or `x86_64` simulator ran it.
+
+The physical-device rows ran on 2026-11-05 with Flutter 3.47.6 and Xcode 27.0 on an Apple silicon host, with Xcode automatic signing under a development team passed only at build time (`FLUTTER_XCODE_DEVELOPMENT_TEAM`); no team, identity, profile or device identifier is committed. They are debug builds, so the integration test drives the application through the Dart VM service over USB. The `iproxy` that Flutter 3.47.6 bundles for that connection is an `x86_64` binary and needs Rosetta on Apple silicon; the runs used an `arm64` build of the same tool from libusbmuxd 2.1.1 in its place.
+
+- **Standalone.** `flutter test integration_test -d <device>` with the library above.
+- **Umbrella.** The example in umbrella mode (`BAROMETER_FLUTTER_UMBRELLA_MODULE` set, `pod install`, static pods) against an umbrella XCFramework that binds `barometermobile` together with two other Go packages in one `gomobile bind`, from a clean `build/ios`. The test ran with `flutter drive --keep-app-running` and a driver file that calls `integrationDriver()` and was not committed, because `flutter test integration_test` uninstalls the application after the run. In the built application the Go runtime is linked once, into the Runner binary, and the bundle contains no `Barometer` or `barometer_flutter` dynamic framework. The umbrella artifact's build information:
+
+```text
+artifact: umbrella XCFramework (ios-arm64, ios-arm64_x86_64-simulator)
+barometermobile: commit c49695c9406d64d34d247de827ae2b0343634640
+go: go1.26.2
+gomobile: golang.org/x/mobile v0.0.0-20260820023541-8e8303b9da6c
+flags: -trimpath -iosversion=15.0 -ldflags='-s -w'
+xcode: Xcode 27.0 Build version 27A266a
+status: local build for validation only; not a release, not platform support
+```
+
+The umbrella artifact's own check reported no skipped `barometermobile` exports and no build-host paths in its libraries.
 
 ## Observed Behavior and Gaps
 
@@ -62,4 +81,4 @@ The CI row ran with Flutter 3.47.8 and the runner's Xcode (reported as 16.4), wi
 - **Network.** On the simulator `NWPath.supportsIPv4` and `supportsIPv6` were false on a satisfied Wi-Fi path, so the adapter also reads the address families of the path's primary interface, ignoring link-local and loopback addresses. The interface name, its addresses and the gateways are compared inside the adapter only. On the simulator the path reflects the host's network.
 - **Device.** The simulator does not model a battery; the tests check the mapping with fixed inputs and that a reading restores the monitoring setting.
 - **Resolver.** An unknown name is reported as `resolver_error`, never `no_data`, as on Android. A lookup abandoned at its deadline keeps its thread and one of the four lookup slots until `getaddrinfo` returns.
-- **Not covered.** Devices other than one iPhone 13 on iOS 27.0.1, the trust-store probe on a device, the iOS 15 to 18.3 runtimes, `x86_64` simulators, VPN, validation and suspension signals, the network-change matrix, lifecycle and cancellation on devices, protected linkage keys (M3, DEV-709), the method channel and Dart API on a device, and the umbrella build.
+- **Not covered.** Devices other than one iPhone 13 on iOS 27.0.1, the trust-store probe on a device, the iOS 15 to 18.3 runtimes, `x86_64` simulators, VPN, validation and suspension signals, the network-change matrix, lifecycle and cancellation on devices, protected linkage keys (M3, DEV-709), the method channel and Dart API on devices other than the iPhone 13 integration-test runs, and the native XCTests in umbrella mode.
