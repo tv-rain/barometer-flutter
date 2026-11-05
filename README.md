@@ -4,7 +4,7 @@
 
 ## Current Status
 
-This repository is a skeleton. The plugin builds for Android and iOS and links the native Barometer library, but it has no Dart API, opens no platform channel and calls no Barometer code at registration or launch. The Android native adapters and state store and the iOS state store exist and are exercised by native tests only; the Dart API, the iOS capability and network adapters and the wiring between them arrive later in Phase 3 milestone M2. The package is not published (`publish_to: none`); publication is planned with the Phase 5 release.
+This repository is a skeleton. The plugin builds for Android and iOS and links the native Barometer library, but it has no Dart API, opens no platform channel and calls no Barometer code at registration or launch. The Android and iOS native adapters and state stores exist and are exercised by native tests only; the Dart API and the wiring between it and the adapters arrive later in Phase 3 milestone M2. The package is not published (`publish_to: none`); publication is planned with the Phase 5 release.
 
 A successful build establishes compiler and linker compatibility for the recorded inputs only. It does not establish loading or execution on a device, emulator or simulator, conformance, safety, or support for any platform version. Barometer Draft `0.1.0` status is unchanged.
 
@@ -56,6 +56,21 @@ The remaining facade callbacks that `Initialize`, TCP-01 and DNS-01 need have An
 
 No adapter reads an address, network name, operator, subscriber, account or device identifier into a value it returns. The linkage key store is not installed, so linkage is disabled. The trusted local document is read only from the application asset `barometer/trust.json` by `TrustDocument`; it is never taken from Dart. Wiring the client into the plugin and the Dart API is later work. Validation evidence is in [docs/android-validation.md](docs/android-validation.md).
 
+## Apple Adapters
+
+The same callbacks have Apple backends in Swift over Foundation, UIKit and the Network framework; `BarometerBinding.newClient(store:trust:)` wraps them in the facade protocols with a `RecordStore` and creates the client. It starts an `NWPathMonitor` and does nothing else; close the returned client before the store. Facade calls must not be made on the main thread.
+
+| Port | Apple source | Values |
+|---|---|---|
+| `Clock` | `Date()` | Treated as trusted: iOS sets the clock from the network by default and has no public API that reports manual time, so manual time cannot be detected. A time that is not positive is unavailable; no fallback |
+| `Consent` | None yet | Always `absent`, so a measurement that requires consent never runs |
+| `Device` | `UIDevice` battery level and state, read on the main queue with battery monitoring turned on for the reading and then restored | Battery percentage and charging, each only when known; unknown if the main queue does not answer within the deadline |
+| `TimeZone` | `TimeZone.current` | IANA identifier |
+| `Network` | `NWPathMonitor` | Type `wifi`, `cellular`, `ethernet` or `other`; IPv4 and IPv6 `yes` or `no` from the path or, where the path does not report them, from the primary interface's non-link-local addresses; VPN, validation and captive portal `unknown`. The generation changes only when these values, the primary interface or the gateways change. CoreTelephony is not used |
+| `SystemResolver` | `getaddrinfo` on its own thread, at most four at once | Canonical addresses of the requested family; any failure, including an unknown name, is an error |
+
+As on Android, no adapter returns an address, network name, interface name, operator, subscriber, account or device identifier, the linkage key store is not installed, and the trusted local document is read only from the application bundle resource `barometer/trust.json` by `TrustDocument`. Validation evidence is in [docs/apple-validation.md](docs/apple-validation.md).
+
 ## Build and Validate
 
 Requires Flutter with Dart 3.8.1 or later; CI uses Flutter 3.47.6. iOS builds also need CocoaPods.
@@ -76,11 +91,11 @@ cd android
 ./gradlew :barometer_flutter:connectedDebugAndroidTest   # needs a running emulator or device
 ```
 
-The Swift store's XCTests run in `example/ios` on a simulator after the iOS simulator build, and a script checks atomicity under process kill:
+The Swift store and adapter XCTests run in `example/ios` on a simulator after the iOS simulator build, and a script checks the store's atomicity under process kill. CI does not run them. The adapter tests contact `1.1.1.1:443` and resolve `example.org` once each:
 
 ```sh
 cd example/ios
-xcodebuild test -workspace Runner.xcworkspace -scheme Runner -destination 'platform=iOS Simulator,id=<udid>' -only-testing:RunnerTests -parallel-testing-enabled NO
+xcodebuild test -workspace Runner.xcworkspace -scheme Runner -destination 'platform=iOS Simulator,id=<udid>' -only-testing:RunnerTests -parallel-testing-enabled NO -collect-test-diagnostics never
 cd ../..
 bash scripts/ios-record-store-kill-test.sh <udid>
 ```
