@@ -24,7 +24,7 @@ slices:
 status: compiled only; not a release, not platform support
 ```
 
-## DEV-729: Adapters, TCP-01 and DNS-01
+## DEV-729 and DEV-730: Adapters, TCP-01 and DNS-01
 
 Run on 2026-11-05 on an Apple silicon host with Xcode 27.0, from `example/ios` with `xcodebuild test -workspace Runner.xcworkspace -scheme Runner -destination 'platform=iOS Simulator,id=<udid>' -only-testing:RunnerTests -parallel-testing-enabled NO -collect-test-diagnostics never`, after `flutter build ios --debug --simulator`. It runs `AdapterTests` (7 tests), `RecordStoreTests` (16 tests, from DEV-728), `RecordStoreKillTests` (2 process-kill helpers, skipped unless `scripts/ios-record-store-kill-test.sh` drives them) and `RunnerTests` (1 test). `AdapterTests` initializes a facade client with the Apple adapters, the state store and a synthetic trusted local document, runs TCP-01 to `1.1.1.1:443` and DNS-01 for `example.org` through `getaddrinfo`, each through `StartRun`, `NextBundle` and `AcknowledgeBundle` called off the main thread, checks that the coarse access state holds only the fixed values and that no result retains the target, and checks that the bundled `barometer/trust.json` initializes a client and an invalid document is rejected as `trust_invalid`.
 
@@ -36,9 +36,9 @@ The trust-store check ran a Go probe built from Go 1.26.0 for `ios/arm64` agains
 | Simulator, oldest installed runtime `iOS 18.4 (22E238)` | iPhone 16 | iOS 18.4 | `arm64` | 24 of 24 run passed, 2 skipped | Same as iOS 27.0 |
 | Simulator, iOS 15 runtime | Not run | | | | |
 | Simulator, `x86_64` | Not run | | | | |
-| Physical device | Not run | | | | |
+| Physical device (DEV-730), connected by USB | iPhone 13 | iOS 27.0.1 | `arm64` | 24 of 24 run passed, 2 skipped | Not run |
 
-The validation plan's minimum is an iOS 15 simulator runtime. None is installed on this host and it was not downloaded: the host's oldest runnable runtime is iOS 18.4, so the iOS 15 to 18.3 range has no simulator evidence. The `x86_64` simulator slice was built but not run, because the host is Apple silicon. Physical-device evidence is the next task.
+The validation plan's minimum is an iOS 15 simulator runtime. None is installed on this host and it was not downloaded: the host's oldest runnable runtime is iOS 18.4, so the iOS 15 to 18.3 range has no simulator evidence. The `x86_64` simulator slice was built but not run, because the host is Apple silicon. The physical-device row ran the same XCTests from `example/ios` on 2026-11-05 with the same library build-info, after `flutter build ios --debug --no-codesign`, with `-destination 'platform=iOS,id=<udid>'` and Xcode automatic signing under a development team passed on the `xcodebuild` command line; no team, identity, profile or device identifier is committed. The trust-store probe was not run on the device, so the iOS 15 to 26 range has no device evidence either.
 
 ## Observed Behavior and Gaps
 
@@ -47,4 +47,4 @@ The validation plan's minimum is an iOS 15 simulator runtime. None is installed 
 - **Network.** On the simulator `NWPath.supportsIPv4` and `supportsIPv6` were false on a satisfied Wi-Fi path, so the adapter also reads the address families of the path's primary interface, ignoring link-local and loopback addresses. The interface name, its addresses and the gateways are compared inside the adapter only. On the simulator the path reflects the host's network.
 - **Device.** The simulator does not model a battery; the tests check the mapping with fixed inputs and that a reading restores the monitoring setting.
 - **Resolver.** An unknown name is reported as `resolver_error`, never `no_data`, as on Android. A lookup abandoned at its deadline keeps its thread and one of the four lookup slots until `getaddrinfo` returns.
-- **Not covered.** A physical device, the iOS 15 to 18.3 runtimes, `x86_64` simulators, VPN, validation and suspension signals, the network-change matrix, lifecycle and cancellation on devices, protected linkage keys (M3, DEV-709), the Dart API and the umbrella build (DEV-706).
+- **Not covered.** Devices other than one iPhone 13 on iOS 27.0.1, the trust-store probe on a device, the iOS 15 to 18.3 runtimes, `x86_64` simulators, VPN, validation and suspension signals, the network-change matrix, lifecycle and cancellation on devices, protected linkage keys (M3, DEV-709), the Dart API and the umbrella build (DEV-706).
