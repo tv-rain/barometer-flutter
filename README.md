@@ -4,7 +4,7 @@
 
 ## Current Status
 
-This repository is a skeleton. The plugin builds for Android and iOS and links the native Barometer library, but it has no Dart API, opens no platform channel and calls no Barometer code at registration or launch. The Android native adapters and state store exist and are exercised by instrumented tests only; the Dart API, the iOS adapters and the wiring between them arrive later in Phase 3 milestone M2. The package is not published (`publish_to: none`); publication is planned with the Phase 5 release.
+This repository is a skeleton. The plugin builds for Android and iOS and links the native Barometer library, but it has no Dart API, opens no platform channel and calls no Barometer code at registration or launch. The Android native adapters and state store and the iOS state store exist and are exercised by native tests only; the Dart API, the iOS capability and network adapters and the wiring between them arrive later in Phase 3 milestone M2. The package is not published (`publish_to: none`); publication is planned with the Phase 5 release.
 
 A successful build establishes compiler and linker compatibility for the recorded inputs only. It does not establish loading or execution on a device, emulator or simulator, conformance, safety, or support for any platform version. Barometer Draft `0.1.0` status is unchanged.
 
@@ -36,6 +36,10 @@ The Kotlin and Swift sources name gomobile-generated classes only in `BarometerB
 ## Android State Storage
 
 The Android backend of the facade's `Records` port (`RecordStore.kt`) keeps the replay records, run ledger, pending bundles and clearing marker of one storage scope as one file per record under the application's `no_backup` directory (`Context.getNoBackupFilesDir()`), which Android excludes from cloud backup and device-to-device transfer. The plugin therefore adds no backup rules to the host application's manifest. A put writes a temporary file and renames it over the record, so a process kill leaves the earlier or the new value. All calls run in arrival order on one worker thread and wait at most their `timeoutMillis`; a call still queued at its deadline never runs, a running one finishes before any later call, and the caller gets an error in both cases. The facade hands a store's calls over one at a time in the order Go issues them, and never one whose deadline has passed, so arrival order is issue order and a write abandoned before a clear cannot arrive after it. While a clearing marker is stored, other puts are refused. A scope has one owner across threads and processes, and calls on the UI thread fail instead of blocking it. Durability across power loss or a full disk, OS or device clearing and reinstallation are not yet validated.
+
+## Apple State Storage
+
+The Apple backend of the `Records` port (`RecordStore.swift`) has the same semantics as the Android one: one file per record, temporary-file-and-rename writes, arrival-order calls on one serial queue bounded by `timeoutMillis`, withdrawal of calls still queued at their deadline or at close, refusal of other puts while a clearing marker is stored, one owner per scope (an in-process registry and a `flock` that also refuses other processes) and failure instead of blocking on the main thread. Records live under the application's own `Library/Application Support/barometer/<scope>/records`, never in a shared or app-group container, and the `barometer`, scope and records directories are marked `isExcludedFromBackup`, so they stay out of iCloud and device backups. Files keep the platform's default data-protection class. A key the store does not hold reaches the facade as `BarometermobileNewAbsentRecordValue()`, because Swift cannot return nil from the generated throwing `get`. Durability across power loss or a full disk, OS or device clearing and reinstallation are not yet validated.
 
 ## Android Adapters
 
@@ -70,6 +74,15 @@ flutter build ios --debug --simulator
 cd android
 ./gradlew :barometer_flutter:testDebugUnitTest
 ./gradlew :barometer_flutter:connectedDebugAndroidTest   # needs a running emulator or device
+```
+
+The Swift store's XCTests run in `example/ios` on a simulator after the iOS simulator build, and a script checks atomicity under process kill:
+
+```sh
+cd example/ios
+xcodebuild test -workspace Runner.xcworkspace -scheme Runner -destination 'platform=iOS Simulator,id=<udid>' -only-testing:RunnerTests -parallel-testing-enabled NO
+cd ../..
+bash scripts/ios-record-store-kill-test.sh <udid>
 ```
 
 CI runs the same steps on `ubuntu-24.04` for Android and `macos-15` for iOS.
