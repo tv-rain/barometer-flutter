@@ -62,7 +62,7 @@ The same callbacks have Apple backends in Swift over Foundation, UIKit and the N
 
 | Port | Apple source | Values |
 |---|---|---|
-| `Clock` | `Date()` | Treated as trusted: iOS sets the clock from the network by default and has no public API that reports manual time, so manual time cannot be detected. A time that is not positive is unavailable; no fallback |
+| `Clock` | `Date()` (`CLOCK_REALTIME`) | Used as trusted time when positive; a time that is not positive is unavailable, with no fallback. Manual time cannot be detected (see below) |
 | `Consent` | None yet | Always `absent`, so a measurement that requires consent never runs |
 | `Device` | `UIDevice` battery level and state, read on the main queue with battery monitoring turned on for the reading and then restored | Battery percentage and charging, each only when known; unknown if the main queue does not answer within the deadline |
 | `TimeZone` | `TimeZone.current` | IANA identifier |
@@ -70,6 +70,8 @@ The same callbacks have Apple backends in Swift over Foundation, UIKit and the N
 | `SystemResolver` | `getaddrinfo` on its own thread, at most four at once | Canonical addresses of the requested family; any failure, including an unknown name, is an error |
 
 As on Android, no adapter returns an address, network name, interface name, operator, subscriber, account or device identifier, the linkage key store is not installed, and the trusted local document is read only from the application bundle resource `barometer/trust.json` by `TrustDocument`. Validation evidence is in [docs/apple-validation.md](docs/apple-validation.md).
+
+Known limitation: iOS has no public API that reports whether the clock is set automatically ("Set Automatically"), so manual time cannot be detected and the system wall clock is used as trusted time whenever it is positive. This is weaker than the Android adapter, which reports the clock unavailable unless automatic time is on. A user-set or otherwise wrong clock is therefore accepted, which leaves the residual risk of [a wrong or manipulated device clock](https://github.com/tv-rain/barometer-spec/blob/main/library/task-trust.md#residual-risks) named by the specification: expiry, key validity and retention decisions are made against that clock.
 
 ## Build and Validate
 
