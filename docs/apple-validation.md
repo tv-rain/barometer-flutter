@@ -51,8 +51,9 @@ Run on 2026-11-05 from `example` with `flutter test integration_test -d <udid>`,
 | Target | Model | OS | Architecture | Integration test |
 |---|---|---|---|---|
 | Simulator, runtime `iOS 26.5 (23F77)` | iPhone 17 Pro | iOS 26.5 | `arm64` | 1 of 1 passed |
+| CI simulator on `macos-15`, runtime `iOS 26.2` | iPhone 16 | iOS 26.2 | `arm64` | 1 of 1 passed |
 
-This is the first measurement run through the method channel on iOS, and the first run of the plugin inside the Flutter application with Dart driving it. No device, older runtime or `x86_64` simulator ran it.
+The CI row ran with Flutter 3.47.8 and the runner's Xcode (reported as 16.4), with a library built in the same job by `scripts/build-native.sh apple` at the same pin; CI runs it on every pull request on the `iPhone <number>` simulator of the newest installed iOS runtime. An earlier CI attempt on an iPhone SE (3rd generation) simulator of the same runtime built the example and then made no progress for 19 minutes before it was cancelled; the step now has a 25-minute limit and logs verbosely. This is the first measurement run through the method channel on iOS, and the first run of the plugin inside the Flutter application with Dart driving it. No device, older runtime or `x86_64` simulator ran it.
 
 ## Observed Behavior and Gaps
 

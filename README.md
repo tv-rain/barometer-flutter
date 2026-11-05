@@ -198,7 +198,7 @@ cd ../..
 bash scripts/ios-record-store-kill-test.sh <udid>
 ```
 
-CI runs the same steps on `ubuntu-24.04` for Android and `macos-15` for iOS, except the plugin's instrumented tests and XCTests. It runs the example's integration test on an API 35 `x86_64` Android emulator and on an iPhone simulator of the runner's Xcode.
+CI runs the same steps on `ubuntu-24.04` for Android and `macos-15` for iOS, except the plugin's instrumented tests and XCTests. It runs the example's integration test on an API 35 `x86_64` Android emulator and on an iPhone simulator of the newest iOS runtime installed on the runner.
 
 ## Repository Boundaries
 
