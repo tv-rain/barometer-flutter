@@ -163,7 +163,9 @@ class RecordStoreDeviceTest {
     fun theFacadeAdapterStoresListsAndClearsEveryClass() {
         val s = open()
         val records = BarometerBinding.records(s)
-        assertNull(records.get(key(1, 1), 1000))
+        // An absent key is the facade's opaque absent value, never null; AdapterDeviceTest checks
+        // that Go reads it as absent on first use of an empty store.
+        assertNotNull(records.get(key(1, 1), 1000))
         for (cls in 1..3) for (n in 1..3) records.put(key(cls, n), byteArrayOf(cls.toByte(), n.toByte()), 1000)
         assertNotNull(records.get(key(2, 2), 1000))
         assertArrayEquals(byteArrayOf(2, 2), s.get(key(2, 2), 1000))

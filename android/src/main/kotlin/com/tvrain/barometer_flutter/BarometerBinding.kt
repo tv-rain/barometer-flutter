@@ -77,8 +77,10 @@ internal class BarometerClient(val facade: Client, private val network: AndroidN
  * detail-free exception, which the facade reports as unavailable.
  */
 private class StoreRecords(private val store: RecordStore) : Records {
-    override fun get(key: String, timeoutMillis: Long): RecordValue? =
+    /** A key the store does not hold is the facade's absent value: a null return is unavailable. */
+    override fun get(key: String, timeoutMillis: Long): RecordValue =
         store.get(key, timeoutMillis)?.let { Barometermobile.newRecordValue(it) }
+            ?: Barometermobile.newAbsentRecordValue()
 
     override fun put(key: String, value: ByteArray?, timeoutMillis: Long) =
         store.put(key, value ?: ByteArray(0), timeoutMillis)
