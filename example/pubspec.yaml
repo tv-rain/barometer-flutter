@@ -1,5 +1,5 @@
 name: barometer_flutter_example
-description: Example application that builds with the barometer_flutter plugin.
+description: Example application that runs synthetic TCP-01 and DNS-01 tasks with the barometer_flutter plugin.
 publish_to: none
 
 environment:
@@ -13,6 +13,8 @@ dependencies:
 
 dev_dependencies:
   flutter_test:
+    sdk: flutter
+  integration_test:
     sdk: flutter
   flutter_lints: ^6.0.0
 
