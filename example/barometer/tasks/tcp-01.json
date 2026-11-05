@@ -9,7 +9,12 @@
   },
   "options": {},
   "schedule": {
-    "not_after": "__EXPIRES_AT__"
+    "repeat": {
+      "mode": "none"
+    },
+    "limits": {
+      "max_runs": 1
+    }
   },
   "execution": {
     "limits": {}

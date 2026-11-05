@@ -384,7 +384,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "# Writes the synthetic Barometer files from example/barometer into the app bundle as\n# barometer/trust.json and barometer/tasks/<name>.json. __EXPIRES_AT__ becomes the build\n# time plus six days (Barometer admits an embedded task only before its not_after, at most\n# seven days after acceptance) and __BUILD_STAMP__ the build time in Unix seconds.\nset -eu\nsrc=\"${SRCROOT}/../barometer\"\ndst=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/barometer\"\nnow=$(date -u +%s)\nexpires=$(date -u -r $((now + 518400)) +%Y-%m-%dT%H:%M:%SZ)\nrm -rf \"$dst\"\nmkdir -p \"$dst/tasks\"\nfor f in \"$src\"/trust.json \"$src\"/tasks/*.json; do\n  sed -e \"s/__EXPIRES_AT__/$expires/g\" -e \"s/__BUILD_STAMP__/$now/g\" \"$f\" > \"$dst/${f#\"$src\"/}\"\ndone\n";
+			shellScript = "# Writes the synthetic Barometer files from example/barometer into the app bundle as\n# barometer/trust.json and barometer/tasks/<name>.json. __EXPIRES_AT__ becomes the build\n# time plus six days (the target registration expiry in trust.json; the tasks are one-time\n# embedded tasks without not_after) and __BUILD_STAMP__ the build time in Unix seconds.\nset -eu\nsrc=\"${SRCROOT}/../barometer\"\ndst=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/barometer\"\nnow=$(date -u +%s)\nexpires=$(date -u -r $((now + 518400)) +%Y-%m-%dT%H:%M:%SZ)\nrm -rf \"$dst\"\nmkdir -p \"$dst/tasks\"\nfor f in \"$src\"/trust.json \"$src\"/tasks/*.json; do\n  sed -e \"s/__EXPIRES_AT__/$expires/g\" -e \"s/__BUILD_STAMP__/$now/g\" \"$f\" > \"$dst/${f#\"$src\"/}\"\ndone\n";
 		};
 		F5B3C894E4FFB0CE6065922E /* [CP] Check Pods Manifest.lock */ = {
 			isa = PBXShellScriptBuildPhase;
