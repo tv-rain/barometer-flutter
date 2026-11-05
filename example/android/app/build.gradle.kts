@@ -61,11 +61,11 @@ flutter {
  * Writes the example's synthetic Barometer files from `example/barometer/` into the
  * generated assets as `barometer/trust.json` and `barometer/tasks/<name>.json`.
  *
- * Barometer admits an embedded task only before its `not_after`, at most seven days after
- * acceptance, so the files carry placeholders that are filled at every build:
- * `__EXPIRES_AT__` with the build time plus six days (the task expiry and the target
- * registration expiry) and `__BUILD_STAMP__` with the build time in Unix seconds (part of
- * each task identifier, so a rebuilt task never conflicts with a retained replay record).
+ * The files carry placeholders that are filled at every build: `__EXPIRES_AT__` in the
+ * trusted local document with the build time plus six days (the target registration
+ * expiry) and `__BUILD_STAMP__` with the build time in Unix seconds (part of each task
+ * identifier, so a rebuilt task never conflicts with a retained replay record). The tasks
+ * are one-time embedded tasks without `not_after`.
  */
 abstract class BarometerExampleAssets : DefaultTask() {
     @get:InputDirectory
