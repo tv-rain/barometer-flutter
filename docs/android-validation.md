@@ -6,12 +6,12 @@ No measurement result, outcome, device serial, account, network name or address 
 
 ## Library Under Test
 
-The `Barometer.aar.build-info.txt` written by `scripts/build-native.sh android` at the pin:
+The `Barometer.aar.build-info.txt` written by `scripts/build-native.sh android` at the current pin:
 
 ```text
 artifact: Barometer.aar
 targets: android/arm64,android/amd64
-commit: 52789565c85f9d14d7b2ce1d5e42f85b11cea753
+commit: c49695c9406d64d34d247de827ae2b0343634640
 go: go1.26.0
 gomobile: v0.0.0-20260821190718-4776eadac327
 ndk: 29.0.14206865
@@ -23,6 +23,19 @@ slices:
 status: compiled only; not a release, not platform support
 ```
 
+The API 35 row and the trust-store probes below were recorded with a library built at the earlier pin `52789565c85f9d14d7b2ce1d5e42f85b11cea753`, whose build-info differs from the one above only in the `commit` line.
+
+## Instrumented Tests at the Current Pin
+
+Run on 2026-11-05 from `example/android` with `./gradlew :barometer_flutter:connectedDebugAndroidTest` after a clean build, with the library above. The `arm64-v8a` `libgojni.so` packaged in the test APK is byte-identical to the one in the built AAR after `llvm-strip --strip-unneeded`, which is what the Android Gradle plugin applies. The tests are `AdapterDeviceTest` (6 tests) and `RecordStoreDeviceTest` (7 tests), described below. No test or glue code changed for this run, and the trust-store probe was not repeated.
+
+| Target | Model | OS | ABI | Instrumented tests |
+|---|---|---|---|---|
+| Emulator, `system-images;android-21;default;arm64-v8a` | Android SDK built for arm64 | Android 5.0.2 (API 21) | `arm64-v8a` | 13 of 13 passed |
+| Emulator, `system-images;android-24;default;arm64-v8a` | Android SDK built for arm64 | Android 7.0 (API 24) | `arm64-v8a` | 13 of 13 passed |
+
+As before, these runs use the plugin's own test APK, not a Flutter application.
+
 ## DEV-725: Adapters, TCP-01 and DNS-01
 
 Run on 2026-11-04 from `example/android` with `./gradlew :barometer_flutter:connectedDebugAndroidTest`, which runs the plugin's instrumented tests: `AdapterDeviceTest` (6 tests) and `RecordStoreDeviceTest` (7 tests, from DEV-724). `AdapterDeviceTest` initializes a facade client with the Android adapters, the state store and a synthetic trusted local document, runs TCP-01 to `1.1.1.1:443` and DNS-01 for `example.org` through the platform resolver, each through `StartRun`, `NextBundle` and `AcknowledgeBundle`, and checks that the coarse access state holds only the fixed values and that no result retains the target.
@@ -31,9 +44,9 @@ The trust-store check ran a Go probe built from Go 1.26.0 for `android/arm64` an
 
 | Target | Model | OS | ABI | Instrumented tests | Trust-store probe |
 |---|---|---|---|---|---|
-| Emulator, `system-images;android-21;default;arm64-v8a` | Android SDK built for arm64 | Android 5.0.2 (API 21) | `arm64-v8a` | 13 of 13 passed | System store found (all certificates verify); synthetic CA rejected |
-| Emulator, `system-images;android-24;default;arm64-v8a` | Android SDK built for arm64 | Android 7.0 (API 24) | `arm64-v8a` | 13 of 13 passed | System store found; synthetic CA rejected |
-| Emulator, `system-images;android-35;default;arm64-v8a` | Android SDK built for arm64 | Android 15 (API 35) | `arm64-v8a` | 13 of 13 passed | System store found, and every certificate in the updatable store `/apex/com.android.conscrypt/cacerts` verifies; synthetic CA rejected |
+| Emulator, `system-images;android-21;default;arm64-v8a` | Android SDK built for arm64 | Android 5.0.2 (API 21) | `arm64-v8a` | 13 of 13 passed at `5278956`; superseded by the run above | System store found (all certificates verify); synthetic CA rejected |
+| Emulator, `system-images;android-24;default;arm64-v8a` | Android SDK built for arm64 | Android 7.0 (API 24) | `arm64-v8a` | 13 of 13 passed at `5278956`; superseded by the run above | System store found; synthetic CA rejected |
+| Emulator, `system-images;android-35;default;arm64-v8a` | Android SDK built for arm64 | Android 15 (API 35) | `arm64-v8a` | 13 of 13 passed at `5278956` | System store found, and every certificate in the updatable store `/apex/com.android.conscrypt/cacerts` verifies; synthetic CA rejected |
 | Physical device | Not run | | | | |
 
 No project-owned physical device was available for this run, so the `arm64-v8a` device row of the validation plan is open.
