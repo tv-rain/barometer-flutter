@@ -163,7 +163,7 @@ export BAROMETER_FLUTTER_UMBRELLA_MODULE=<module name of the umbrella framework>
 flutter build ios --debug --simulator
 ```
 
-The Gradle properties can also be passed as `ORG_GRADLE_PROJECT_barometerUmbrellaArtifact` and `ORG_GRADLE_PROJECT_barometerUmbrellaRepository`, which `flutter test integration_test` also honors. Umbrella mode has been built and its integration test run locally on an Android emulator and an iOS simulator against an umbrella artifact that binds `barometermobile` with other Go packages. CI builds the example in umbrella mode with the standalone library standing in for the umbrella artifact, and runs tests in standalone mode only.
+The Gradle properties can also be passed as `ORG_GRADLE_PROJECT_barometerUmbrellaArtifact` and `ORG_GRADLE_PROJECT_barometerUmbrellaRepository`, which `flutter test integration_test` also honors. Umbrella mode has been built and its integration test run locally on an Android emulator, an iOS simulator and an iPhone against an umbrella artifact that binds `barometermobile` with other Go packages. CI builds the example in umbrella mode with the standalone library standing in for the umbrella artifact, and runs tests in standalone mode only.
 
 ## Android State Storage
 
