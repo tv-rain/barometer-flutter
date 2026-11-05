@@ -48,6 +48,17 @@ Run on 2026-11-05 from `example/android` with `./gradlew :barometer_flutter:conn
 
 These runs use the plugin's own test APK; the channel host is called directly, not through a Flutter engine.
 
+## Example Application From Dart
+
+Run on 2026-11-05 from `example` with `flutter test integration_test -d <device>` and Flutter 3.47.6 on an Apple silicon host, with the library above. `barometer_flow_test.dart` (1 test) launches the example, checks that nothing has run, presses **Run tcp-01** and **Run dns-01**, and checks that each run reaches `terminal` through `runState` polling from Dart, that its bundle holds one result with execution state `completed` and observation type `tcp_connect` or `dns_query` from platform `android`, and that no bundle is pending after the acknowledgement. The trusted local document and tasks are the example's synthetic files, generated into the APK's assets by the build. TCP-01 contacts `1.1.1.1:443` once and DNS-01 resolves `example.org` once. A second press of **Run tcp-01** in the same build, tried once and not committed, admitted the task as a redelivery whose run ended without a new bundle.
+
+| Target | Model | OS | ABI | Integration test |
+|---|---|---|---|---|
+| Emulator, `system-images;android-35;default;arm64-v8a` | Android SDK built for arm64 | Android 15 (API 35) | `arm64-v8a` | 1 of 1 passed |
+| CI emulator on `ubuntu-24.04`, `system-images;android-35;default;x86_64` | Emulator AVD created by `reactivecircus/android-emulator-runner` | Android 15 (API 35) | `x86_64` | 1 of 1 passed |
+
+The CI row ran with Flutter 3.47.8 and a library built in the same job by `scripts/build-native.sh android` at the same pin; CI runs it on every pull request. This is the first run of the plugin inside a Flutter application on Android: the Dart API, the method channel, the native host, the adapters and the facade together. No API 24 emulator ran it, because the host was out of disk space.
+
 ## DEV-725: Adapters, TCP-01 and DNS-01
 
 Run on 2026-11-04 from `example/android` with `./gradlew :barometer_flutter:connectedDebugAndroidTest`, which runs the plugin's instrumented tests: `AdapterDeviceTest` (6 tests) and `RecordStoreDeviceTest` (7 tests, from DEV-724). `AdapterDeviceTest` initializes a facade client with the Android adapters, the state store and a synthetic trusted local document, runs TCP-01 to `1.1.1.1:443` and DNS-01 for `example.org` through the platform resolver, each through `StartRun`, `NextBundle` and `AcknowledgeBundle`, and checks that the coarse access state holds only the fixed values and that no result retains the target.
@@ -71,4 +82,4 @@ The API 21 run covers the native library alone: it runs the plugin's own test AP
 - **Probe build on API 21.** A probe linked by Go's internal linker (`CGO_ENABLED=0`) crashed at start on the API 21 emulator; one built with the NDK `aarch64-linux-android21-clang` ran. The gomobile library is built with the NDK and loaded on API 21 in the instrumented tests.
 - **Network on API 21 to 22.** The platform has no active-network handle there. The adapter reads IPv4 and IPv6 from the single connected network of the active type and reports them `unknown` otherwise, which fails closed for TCP-01.
 - **Resolver.** An unknown name is reported as `resolver_error`, never `no_data`, because the platform does not separate it from a resolver failure before API 29. A lookup abandoned at its deadline keeps its worker thread until the platform returns.
-- **Not covered.** A physical device, VPN, validation and suspension signals, the network-change matrix, lifecycle and cancellation on devices, protected linkage keys (M3, DEV-708), the Dart API and the umbrella build (DEV-706), and x86_64 emulators.
+- **Not covered.** A physical device, VPN, validation and suspension signals, the network-change matrix, lifecycle and cancellation on devices, protected linkage keys (M3, DEV-708), the Dart API on API 21 to 34, and the umbrella build. The `x86_64` slice has run only the example's integration test in CI.

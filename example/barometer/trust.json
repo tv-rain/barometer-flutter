@@ -1,0 +1,166 @@
+{
+  "format": "barometer-trust/1",
+  "policy": {
+    "generation": 1,
+    "permissions": {
+      "tests": [
+        {
+          "id": "TCP-01",
+          "version": "0.1.0"
+        },
+        {
+          "id": "DNS-01",
+          "version": "0.1.0"
+        }
+      ],
+      "registration_ids": [
+        "example-tcp",
+        "example-dns"
+      ],
+      "paths": {
+        "direct": true,
+        "proxy": false
+      },
+      "max_risk": "low",
+      "require_consent": false,
+      "allow_medium_risk": false,
+      "allow_composite": false,
+      "allow_unknown_risk": false,
+      "label_namespaces": [],
+      "limits": {
+        "attempt": {
+          "duration_ms": 60000,
+          "bytes_sent": 65536,
+          "bytes_received": 262144,
+          "connections": 12
+        },
+        "max_runs": 28,
+        "max_attempts": 2,
+        "max_validity_seconds": 604800,
+        "min_repeat_interval_seconds": 21600,
+        "min_repeat_jitter_seconds": 300,
+        "min_retry_delay_ms": 30000,
+        "max_retry_delay_ms": 600000,
+        "max_retry_jitter_ms": 60000,
+        "max_result_bytes": 65536,
+        "max_bundle_bytes": 262144,
+        "max_results_per_bundle": 16,
+        "max_pending_bundles": 32,
+        "max_pending_bytes": 4194304,
+        "max_retention_seconds": 86400
+      }
+    },
+    "issuers": [
+      {
+        "issuer_id": "example-embedded-issuer",
+        "permissions": {
+          "tests": [
+            {
+              "id": "TCP-01",
+              "version": "0.1.0"
+            },
+            {
+              "id": "DNS-01",
+              "version": "0.1.0"
+            }
+          ],
+          "registration_ids": [
+            "example-tcp",
+            "example-dns"
+          ],
+          "paths": {
+            "direct": true,
+            "proxy": false
+          },
+          "max_risk": "low",
+          "require_consent": false,
+          "allow_medium_risk": false,
+          "allow_composite": false,
+          "allow_unknown_risk": false,
+          "label_namespaces": [],
+          "limits": {
+            "attempt": {
+              "duration_ms": 60000,
+              "bytes_sent": 65536,
+              "bytes_received": 262144,
+              "connections": 12
+            },
+            "max_runs": 28,
+            "max_attempts": 2,
+            "max_validity_seconds": 604800,
+            "min_repeat_interval_seconds": 21600,
+            "min_repeat_jitter_seconds": 300,
+            "min_retry_delay_ms": 30000,
+            "max_retry_delay_ms": 600000,
+            "max_retry_jitter_ms": 60000,
+            "max_result_bytes": 65536,
+            "max_bundle_bytes": 262144,
+            "max_results_per_bundle": 16,
+            "max_pending_bundles": 32,
+            "max_pending_bytes": 4194304,
+            "max_retention_seconds": 86400
+          }
+        }
+      }
+    ],
+    "targets": [
+      {
+        "id": "example-tcp",
+        "test": {
+          "id": "TCP-01",
+          "version": "0.1.0"
+        },
+        "role": "measurement",
+        "tuple": {
+          "address": "1.1.1.1",
+          "port": 443,
+          "scheme": "tcp"
+        },
+        "paths": {
+          "direct": true,
+          "proxy": false
+        },
+        "baseline_risk": "low",
+        "owner": "synthetic",
+        "purpose": "synthetic",
+        "review_generation": 1,
+        "expires_at": "__EXPIRES_AT__",
+        "redirect_ids": []
+      },
+      {
+        "id": "example-dns",
+        "test": {
+          "id": "DNS-01",
+          "version": "0.1.0"
+        },
+        "role": "measurement",
+        "tuple": {
+          "hostname": "example.org"
+        },
+        "paths": {
+          "direct": true,
+          "proxy": false
+        },
+        "baseline_risk": "low",
+        "owner": "synthetic",
+        "purpose": "synthetic",
+        "review_generation": 1,
+        "expires_at": "__EXPIRES_AT__",
+        "redirect_ids": []
+      }
+    ],
+    "keys": []
+  },
+  "configuration_approvals": {
+    "endpoints": [],
+    "connection_codes": [],
+    "linkage_scopes": [],
+    "allow_linkage": false
+  },
+  "context_approvals": {
+    "connection_codes": [],
+    "classification_versions": [],
+    "country_codes": [],
+    "region_codes": []
+  }
+}

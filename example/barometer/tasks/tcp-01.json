@@ -1,0 +1,21 @@
+{
+  "schema_version": "0.1.0",
+  "task_id": "example-tcp-01-__BUILD_STAMP__",
+  "test_id": "TCP-01",
+  "test_version": "0.1.0",
+  "input": {
+    "ip_address": "1.1.1.1",
+    "port": 443
+  },
+  "options": {},
+  "schedule": {
+    "not_after": "__EXPIRES_AT__"
+  },
+  "execution": {
+    "limits": {}
+  },
+  "safety": {
+    "risk_level": "low",
+    "requires_user_consent": false
+  }
+}

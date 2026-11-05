@@ -4,7 +4,7 @@
 
 ## Current Status
 
-The plugin builds for Android and iOS and links the native Barometer library. It has a public Dart API, [`BarometerClient`](#dart-api), and a method channel that drives the facade client with the platform adapters and state store on Android and on iOS. The example application does not run a measurement yet. Nothing runs at plugin registration or application launch. The package is not published (`publish_to: none`); publication is planned with the Phase 5 release.
+The plugin builds for Android and iOS and links the native Barometer library. It has a public Dart API, [`BarometerClient`](#dart-api), and a method channel that drives the facade client with the platform adapters and state store on Android and on iOS. The [example application](#example-application) runs synthetic embedded TCP-01 and DNS-01 tasks from Dart when a button is pressed. Nothing runs at plugin registration or application launch. The package is not published (`publish_to: none`); publication is planned with the Phase 5 release.
 
 A successful build establishes compiler and linker compatibility for the recorded inputs only. It does not establish loading or execution on a device, emulator or simulator, conformance, safety, or support for any platform version. Barometer Draft `0.1.0` status is unchanged.
 
@@ -67,6 +67,26 @@ A failure throws `BarometerException(code)`. The code is the facade's code strin
 | `native_error` | An unexpected native failure, or a bundle without an identifier. Its detail is not forwarded |
 
 `initialize` keeps the client it created when it fails, so the host can retry it, or recover with `clearMeasurementData` after `clearing_incomplete`. `clearMeasurementData` needs a native client, so call `initialize` first; it fails with `not_initialized` otherwise. A `close` that fails keeps the client so that it can be retried. The native client belongs to the Flutter engine: every `BarometerClient` of one engine drives the same native client, and detaching the engine closes it.
+
+## Example Application
+
+The example in `example/` runs TCP-01 and DNS-01 from Dart through `BarometerClient` with synthetic configuration. Nothing runs at launch. Pressing **Run tcp-01** or **Run dns-01** initializes Barometer (or continues after `already_initialized`), admits the embedded task, starts a run, polls `runState` until it is terminal, reads the oldest pending bundle and acknowledges it (`example/lib/flow.dart`). The page shows the lifecycle steps and the result shape (result count, execution state, observation types, platform), never the measurement outcome. TCP-01 contacts `1.1.1.1:443` once and DNS-01 resolves `example.org` once.
+
+The synthetic files live in `example/barometer/`:
+
+| File | Content |
+|---|---|
+| `trust.json` | A `barometer-trust/1` document with one keyless issuer, `example-embedded-issuer`, permitted TCP-01 and DNS-01 at low risk on the direct path, without consent, against two registered targets: `1.1.1.1:443` over TCP and `example.org`. No keys, approvals, endpoints or linkage |
+| `tasks/tcp-01.json`, `tasks/dns-01.json` | One-run embedded tasks for those targets |
+
+They contain no secret, participant endpoint or personal data. Barometer admits an embedded task only before its `not_after`, which may be at most seven days after acceptance, so the files carry two placeholders that the build fills: `__EXPIRES_AT__` becomes the build time plus six days (the task expiry and the registration expiry) and `__BUILD_STAMP__` the build time in Unix seconds, which is part of each task identifier so that a rebuilt task never conflicts with a retained replay record. On Android the `barometerExampleAssets` Gradle task in `example/android/app/build.gradle.kts` writes them as generated assets; on iOS the **Generate Barometer Resources** build phase of the Runner target writes them into the application bundle. An example build is therefore usable for six days. Each task runs once per build: pressing a button again admits the same task as a redelivery, whose run produces no new bundle, and the page reports `no bundle is pending`. A host application ships reviewed files instead; this generation exists only for the example.
+
+`example/integration_test/barometer_flow_test.dart` presses both buttons and checks that each run ends terminal with one completed result of the expected observation type and no pending bundle after the acknowledgement. Run it on an emulator or simulator:
+
+```sh
+cd example
+flutter test integration_test -d <device-id>
+```
 
 ## Channel Contract
 
@@ -160,6 +180,7 @@ flutter analyze
 flutter test
 cd example
 flutter test
+flutter test integration_test -d <device-id>   # needs a running emulator or simulator
 flutter build apk --debug
 flutter build ios --debug --no-codesign
 flutter build ios --debug --simulator
@@ -177,7 +198,7 @@ cd ../..
 bash scripts/ios-record-store-kill-test.sh <udid>
 ```
 
-CI runs the same steps on `ubuntu-24.04` for Android and `macos-15` for iOS, except the instrumented tests, which need an emulator or device.
+CI runs the same steps on `ubuntu-24.04` for Android and `macos-15` for iOS, except the plugin's instrumented tests and XCTests. It runs the example's integration test on an API 35 `x86_64` Android emulator and on an iPhone simulator of the newest iOS runtime installed on the runner.
 
 ## Repository Boundaries
 

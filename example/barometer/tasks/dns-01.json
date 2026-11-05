@@ -1,0 +1,21 @@
+{
+  "schema_version": "0.1.0",
+  "task_id": "example-dns-01-__BUILD_STAMP__",
+  "test_id": "DNS-01",
+  "test_version": "0.1.0",
+  "input": {
+    "hostname": "example.org",
+    "record_type": "A"
+  },
+  "options": {},
+  "schedule": {
+    "not_after": "__EXPIRES_AT__"
+  },
+  "execution": {
+    "limits": {}
+  },
+  "safety": {
+    "risk_level": "low",
+    "requires_user_consent": false
+  }
+}
