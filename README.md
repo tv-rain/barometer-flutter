@@ -16,7 +16,7 @@ A successful build establishes compiler and linker compatibility for the recorde
 | Android | minSdk 21, compileSdk 35 |
 | iOS | 15.0 |
 
-These follow the supported platform matrix of [decision 0014](https://github.com/tv-rain/barometer/blob/main/docs/decisions/0014-gomobile-facade-and-platform-matrix.md#supported-platform-matrix). Being inside the matrix is a target, not a support claim. The matrix's Android API 21 applies to the native library and to non-Flutter hosts. A Flutter application cannot run below API 24: Flutter 3.47.6 sets 24 as the default application minSdk, warns below 24 and fails the build below 23. The plugin keeps minSdk 21 only to match the native library it packages, so it adds no constraint of its own.
+These follow the supported platform matrix of [decision 0014](https://github.com/tv-rain/barometer/blob/main/docs/decisions/0014-gomobile-facade-and-platform-matrix.md#supported-platform-matrix). Being inside the matrix is a target, not a support claim. The matrix's Android API 21 applies to the native library and to non-Flutter hosts. A Flutter application cannot run below API 24: Flutter 3.47.8 sets 24 as the default application minSdk, warns below 24 and fails the build below 23. The plugin keeps minSdk 21 only to match the native library it packages, so it adds no constraint of its own.
 
 ## Native Library
 
@@ -75,7 +75,7 @@ Known limitation: iOS has no public API that reports whether the clock is set au
 
 ## Build and Validate
 
-Requires Flutter with Dart 3.8.1 or later; CI uses Flutter 3.47.6. iOS builds also need CocoaPods.
+Requires Flutter with Dart 3.8.1 or later; CI uses Flutter 3.47.8. iOS builds also need CocoaPods.
 
 ```sh
 bash scripts/build-native.sh android
