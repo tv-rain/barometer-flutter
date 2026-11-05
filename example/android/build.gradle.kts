@@ -1,7 +1,15 @@
+// Umbrella mode (see the README): `barometerUmbrellaRepository` names a local Maven
+// repository that serves the artifact named by `barometerUmbrellaArtifact`.
+val barometerUmbrellaRepository =
+    (findProperty("barometerUmbrellaRepository") as String?)?.trim()?.takeIf { it.isNotEmpty() }
+
 allprojects {
     repositories {
         google()
         mavenCentral()
+        if (barometerUmbrellaRepository != null) {
+            maven { url = uri(barometerUmbrellaRepository) }
+        }
     }
 }
 

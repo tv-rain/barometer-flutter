@@ -125,7 +125,45 @@ Each output has a `.build-info.txt` file that records the `barometer-go` commit 
 
 To build from a local `barometer-go` checkout instead, set `BAROMETER_GO_DIR`. A local build embeds the checkout path in the library's Go build information, so do not share it outside the team.
 
-The Kotlin and Swift sources name gomobile-generated classes only in `BarometerBinding.kt` and `BarometerBinding.swift`. They name the `barometermobile` facade ([decision 0014](https://github.com/tv-rain/barometer/blob/main/docs/decisions/0014-gomobile-facade-and-platform-matrix.md)), for example `barometermobile.Records` and `BarometermobileClient`. In the TV Rain application's umbrella build, the generated classes come from the umbrella artifact instead of the standalone library.
+The Kotlin and Swift sources name gomobile-generated classes only in `BarometerBinding.kt` and `BarometerBinding.swift`. They name the `barometermobile` facade ([decision 0014](https://github.com/tv-rain/barometer/blob/main/docs/decisions/0014-gomobile-facade-and-platform-matrix.md)), for example `barometermobile.Records` and `BarometermobileClient`.
+
+## Standalone and Umbrella Modes
+
+gomobile artifacts cannot be combined in one application: each carries its own copy of the gomobile runtime. An application that ships its own gomobile library binds `barometermobile` into that library instead, in one `gomobile bind` command with its own Go packages (an umbrella build, see [Umbrella Builds](https://github.com/tv-rain/barometer-go/blob/main/docs/mobile-build.md#umbrella-builds) for the build properties it must keep). The plugin builds in one of two modes:
+
+| Mode | Native library | Selected by |
+|---|---|---|
+| Standalone (default) | The plugin's own `Barometer.aar` and `Barometer.xcframework`, built by `scripts/build-native.sh` | Nothing to set |
+| Umbrella | The host application's umbrella artifact; the plugin ships no native library and no gomobile runtime | The Gradle property `barometerUmbrellaArtifact` on Android; the `Umbrella` subspec on iOS |
+
+The Kotlin and Swift glue is the same in both modes. The facade's Java package `barometermobile` and Objective-C names `Barometermobile…` do not depend on the artifact, so only the iOS module import in `BarometerBinding.swift` is conditional. The umbrella artifact must bind the `barometermobile` package of the `barometer-go` commit the plugin was written for (`scripts/barometer-go.revision`); a facade from another commit may not match the glue.
+
+**Android.** Set `barometerUmbrellaArtifact` to the Maven coordinates (`group:name:version`) of the umbrella AAR, for example in the application's `android/gradle.properties`. The plugin then compiles against it with `compileOnly`, uses it in its own unit and instrumented tests, and neither registers nor depends on its own library. The application declares the repository that serves the AAR for all projects and packages the AAR once, through its own dependency or another plugin's.
+
+**iOS.** The plugin compiles against the umbrella framework that another pod of the application vendors, and the application binary links the facade once. Set two variables for `pod install`, for example at the top of `ios/Podfile`, and link pods statically:
+
+```ruby
+ENV['BAROMETER_FLUTTER_UMBRELLA_POD'] = '<pod that vendors the umbrella framework>'
+ENV['BAROMETER_FLUTTER_UMBRELLA_MODULE'] = '<module name of the umbrella framework>'
+# inside the application target:
+use_frameworks! :linkage => :static
+```
+
+With them set, `Umbrella` becomes the podspec's default subspec, which is the one a Flutter application's Podfile installs. It depends on the named pod and imports the facade through `ios/barometer_flutter/Umbrella/`, a small Clang module that includes `<module>/Barometermobile.objc.h`, so the plugin source does not name the host's module. Run `pod install` again after changing the variables. Dynamic frameworks are not supported in umbrella mode, because the plugin framework would have to link the facade itself.
+
+**Example.** The example builds in either mode. In umbrella mode it stands in for the host with a local Maven repository on Android and the local pod `example/ios/umbrella` on iOS:
+
+```sh
+cd example
+# Android: the AAR at <repo>/<group path>/<name>/<version>/<name>-<version>.aar, with a POM
+flutter build apk --debug -P barometerUmbrellaArtifact=<group:name:version> -P barometerUmbrellaRepository=<repo>
+# iOS: copy or link the umbrella XCFramework into ios/umbrella/Frameworks/ (not tracked)
+export BAROMETER_FLUTTER_UMBRELLA_MODULE=<module name of the umbrella framework>
+(cd ios && pod install)
+flutter build ios --debug --simulator
+```
+
+The Gradle properties can also be passed as `ORG_GRADLE_PROJECT_barometerUmbrellaArtifact` and `ORG_GRADLE_PROJECT_barometerUmbrellaRepository`, which `flutter test integration_test` also honors. Umbrella mode has been built and its integration test run locally on an Android emulator and an iOS simulator against an umbrella artifact that binds `barometermobile` with other Go packages. CI builds the example in umbrella mode with the standalone library standing in for the umbrella artifact, and runs tests in standalone mode only.
 
 ## Android State Storage
 

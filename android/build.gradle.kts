@@ -21,14 +21,26 @@ allprojects {
     }
 }
 
-// The application resolves this plugin's dependencies, so the repository that
-// serves the native library is registered for every project of the build.
-val barometerRepository = file("libs/maven")
-rootProject.allprojects {
-    repositories {
-        maven {
-            url = uri(barometerRepository)
-            content { includeGroup("com.tvrain.barometer") }
+// Umbrella mode: the Gradle property `barometerUmbrellaArtifact` names the Maven
+// coordinates (`group:name:version`) of a host-supplied gomobile artifact that binds the
+// `barometermobile` facade together with the host's own Go packages. The plugin then
+// compiles against that artifact's classes and ships no native library of its own; the
+// host application declares the repository that serves it and packages it once. Without the
+// property (standalone mode, the default) the plugin uses its own library built by
+// scripts/build-native.sh.
+val barometerUmbrellaArtifact: String? =
+    (findProperty("barometerUmbrellaArtifact") as String?)?.trim()?.takeIf { it.isNotEmpty() }
+
+if (barometerUmbrellaArtifact == null) {
+    // The application resolves this plugin's dependencies, so the repository that
+    // serves the native library is registered for every project of the build.
+    val barometerRepository = file("libs/maven")
+    rootProject.allprojects {
+        repositories {
+            maven {
+                url = uri(barometerRepository)
+                content { includeGroup("com.tvrain.barometer") }
+            }
         }
     }
 }
@@ -67,8 +79,15 @@ kotlin {
 }
 
 dependencies {
-    // Built by scripts/build-native.sh; not tracked in Git.
-    implementation("com.tvrain.barometer:barometer:local")
+    if (barometerUmbrellaArtifact == null) {
+        // Built by scripts/build-native.sh; not tracked in Git.
+        implementation("com.tvrain.barometer:barometer:local")
+    } else {
+        // The host application packages the umbrella artifact; tests need it at run time.
+        compileOnly(barometerUmbrellaArtifact)
+        testImplementation(barometerUmbrellaArtifact)
+        androidTestImplementation(barometerUmbrellaArtifact)
+    }
 
     // Test-only; not part of the plugin's runtime dependencies.
     testImplementation("junit:junit:4.13.2")

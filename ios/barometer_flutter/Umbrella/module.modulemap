@@ -1,0 +1,6 @@
+// Umbrella mode only: the facade declarations from the host-supplied umbrella framework,
+// whose module name the podspec passes as BAROMETER_UMBRELLA_MODULE.
+module BarometerUmbrella {
+  header "BarometerUmbrella.h"
+  export *
+}

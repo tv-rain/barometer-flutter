@@ -51,6 +51,12 @@ flutter {
     source = "../.."
 }
 
+// Umbrella mode (see the README): the application, not the plugin, packages the umbrella
+// artifact, as a host application does through its own dependency on it.
+(findProperty("barometerUmbrellaArtifact") as String?)?.trim()?.takeIf { it.isNotEmpty() }?.let {
+    dependencies { implementation(it) }
+}
+
 /**
  * Writes the example's synthetic Barometer files from `example/barometer/` into the
  * generated assets as `barometer/trust.json` and `barometer/tasks/<name>.json`.
