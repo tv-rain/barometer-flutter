@@ -4,7 +4,7 @@
 
 ## Current Status
 
-The plugin builds for Android and iOS and links the native Barometer library. It has a public Dart API, [`BarometerClient`](#dart-api), and on Android a method channel that drives the facade client with the Android adapters and state store. The iOS side of the channel is not wired yet: on iOS every call fails with Flutter's `MissingPluginException`. The Apple adapters and state store exist and are exercised by native tests only. The example application does not run a measurement yet. Nothing runs at plugin registration or application launch. The package is not published (`publish_to: none`); publication is planned with the Phase 5 release.
+The plugin builds for Android and iOS and links the native Barometer library. It has a public Dart API, [`BarometerClient`](#dart-api), and a method channel that drives the facade client with the platform adapters and state store on Android and on iOS. The example application does not run a measurement yet. Nothing runs at plugin registration or application launch. The package is not published (`publish_to: none`); publication is planned with the Phase 5 release.
 
 A successful build establishes compiler and linker compatibility for the recorded inputs only. It does not establish loading or execution on a device, emulator or simulator, conformance, safety, or support for any platform version. Barometer Draft `0.1.0` status is unchanged.
 
@@ -47,7 +47,7 @@ await client.close();
 
 Task sources:
 
-- `embeddedTask(name)`: the task shipped with the application as the Android asset `barometer/tasks/<name>.json` (`src/main/assets/barometer/tasks/` of the application module). Native code reads it and installs it with the embedded issuer of the trusted local document. A name is 1 to 64 lowercase ASCII letters, digits, `_` and `-`, starting with a letter or digit, so it cannot leave that directory.
+- `embeddedTask(name)`: the task shipped with the application as `barometer/tasks/<name>.json`: on Android the asset of that path (`src/main/assets/barometer/tasks/` of the application module), on iOS the resource of that path in the application bundle (a `barometer` folder reference in the Runner target). Native code reads it and installs it with the embedded issuer of the trusted local document. A name is 1 to 64 lowercase ASCII letters, digits, `_` and `-`, starting with a letter or digit, so it cannot leave that directory.
 - `installRemoteTask(Uint8List signedPackage)`: a signed remote task package, passed unchanged. Native code installs it as a remote delivery record and admits it; Go verifies the signature against the issuer keys of the trusted local policy ([decision 0011](https://github.com/tv-rain/barometer/blob/main/docs/decisions/0011-library-verified-signed-remote-tasks.md)). Each admission installs a new single-use record.
 
 The embedded issuer is the one issuer of the trusted local document's policy that has no trusted key. An issuer with a key can sign remote packages, while a keyless issuer can only be reached through an embedded delivery. If the policy has no keyless issuer or more than one, embedded tasks are not installed and `admitTask` fails with `delivery_unavailable`.
@@ -59,9 +59,9 @@ A failure throws `BarometerException(code)`. The code is the facade's code strin
 | Code | Raised when |
 |---|---|
 | `not_initialized` | A call other than `initialize` or `close` is made while no native client exists |
-| `trust_invalid` | `initialize` cannot read the trusted local document asset `barometer/trust.json`, or the facade rejects it |
+| `trust_invalid` | `initialize` cannot read the trusted local document `barometer/trust.json` from the Android assets or the iOS application bundle, or the facade rejects it |
 | `storage_unavailable` | `initialize` cannot open the record store, for example because another owner holds it, or `close` cannot close it |
-| `delivery_unavailable` | The embedded task asset is missing, unreadable, empty or larger than 131,072 bytes, or the document names no unique embedded issuer |
+| `delivery_unavailable` | The embedded task file is missing, unreadable, empty or larger than 131,072 bytes, or the document names no unique embedded issuer |
 | `client_closed` | A call arrives after the Flutter engine detached the plugin |
 | `invalid_arguments` | A channel call has malformed arguments, or a configuration map holds a value that is not JSON. The Dart API sends no malformed call |
 | `native_error` | An unexpected native failure, or a bundle without an identifier. Its detail is not forwarded |
@@ -86,7 +86,11 @@ The method channel is `com.tvrain.barometer_flutter/client` with Flutter's stand
 
 The native handler accepts an argument map only when its keys are exactly those listed, rejects anything else with `invalid_arguments`, and reports any other method as not implemented. JSON texts are bounded to 65,536 characters, handles and identifiers to 256 and packages to 131,072 bytes; the facade applies its own, smaller bounds. Errors are `PlatformException`s whose code is the error code above, with no message or details.
 
-On Android, `BarometerFlutterPlugin` only registers the handler. Each call runs on one of at most four worker threads, never on the UI thread, and its answer is posted to the main looper. The record store is the plugin's `default` scope. Changing the Dart API or this contract is a reviewed public-API change.
+On Android, `BarometerFlutterPlugin` only registers the handler. Each call runs on one of at most four worker threads, never on the UI thread, and its answer is posted to the main looper. The record store is the plugin's `default` scope.
+
+On iOS, `BarometerFlutterPlugin.swift` likewise only registers the handler, and `BarometerHost.swift` implements the same contract with the same arguments, results and error codes. Each call runs on an operation queue of at most four concurrent operations, never on the main thread, and its answer is delivered on the main queue. The record store is the `default` scope under Application Support, and detaching the engine closes the client.
+
+Changing the Dart API or this contract is a reviewed public-API change.
 
 ## Native Library
 
@@ -128,7 +132,7 @@ No adapter reads an address, network name, operator, subscriber, account or devi
 
 ## Apple Adapters
 
-The same callbacks have Apple backends in Swift over Foundation, UIKit and the Network framework; `BarometerBinding.newClient(store:trust:)` wraps them in the facade protocols with a `RecordStore` and creates the client. It starts an `NWPathMonitor` and does nothing else; close the returned client before the store. Facade calls must not be made on the main thread.
+The same callbacks have Apple backends in Swift over Foundation, UIKit and the Network framework; `BarometerBinding.newClient(store:trust:)` wraps them in the facade protocols with a `RecordStore` and creates the client. It starts an `NWPathMonitor` and does nothing else; close the returned client before the store. Facade calls must not be made on the main thread; the method-channel host creates the client at `initialize` and makes every facade call on its worker queue (see [Channel Contract](#channel-contract)).
 
 | Port | Apple source | Values |
 |---|---|---|
@@ -164,7 +168,7 @@ cd android
 ./gradlew :barometer_flutter:connectedDebugAndroidTest   # needs a running emulator or device
 ```
 
-The Swift store and adapter XCTests run in `example/ios` on a simulator after the iOS simulator build, and a script checks the store's atomicity under process kill. CI does not run them. The adapter tests contact `1.1.1.1:443` and resolve `example.org` once each:
+The Swift store, adapter and channel XCTests run in `example/ios` on a simulator after the iOS simulator build, and a script checks the store's atomicity under process kill. CI does not run them. The channel tests contact no network. The adapter tests contact `1.1.1.1:443` and resolve `example.org` once each:
 
 ```sh
 cd example/ios

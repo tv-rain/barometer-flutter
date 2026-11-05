@@ -32,3 +32,48 @@ enum TrustDocument {
     return data
   }
 }
+
+extension TrustDocument {
+  /// Returns the issuer of embedded tasks named by `document`, or nil when there is none.
+  ///
+  /// It is the one issuer of the policy that has no trusted key. An issuer with a key can sign
+  /// remote packages; a keyless issuer can only be reached through an embedded delivery, so it is
+  /// the document's embedded issuer. Zero or several keyless issuers leave the association
+  /// undefined, and embedded tasks are then not installed. Call this only with a document the
+  /// facade has accepted, which has already been validated in full.
+  static func embeddedIssuer(_ document: Data) -> String? {
+    guard let root = try? JSONSerialization.jsonObject(with: document) as? [String: Any],
+      let policy = root["policy"] as? [String: Any],
+      let keys = policy["keys"] as? [Any],
+      let issuers = policy["issuers"] as? [Any]
+    else { return nil }
+    var keyed = Set<String>()
+    for key in keys {
+      guard let id = (key as? [String: Any])?["issuer_id"] as? String else { return nil }
+      keyed.insert(id)
+    }
+    var keyless = Set<String>()
+    for issuer in issuers {
+      guard let id = (issuer as? [String: Any])?["issuer_id"] as? String else { return nil }
+      if !keyed.contains(id) { keyless.insert(id) }
+    }
+    return keyless.count == 1 ? keyless.first : nil
+  }
+}
+
+/// Returns the bytes of the bundle resource at `url`, or nil if it is missing, unreadable, empty
+/// or larger than `max` bytes. It stops reading once more than `max` bytes have arrived.
+func readResource(_ url: URL, max: Int) -> Data? {
+  guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
+  defer { try? handle.close() }
+  var data = Data()
+  do {
+    while data.count <= max {
+      guard let chunk = try handle.read(upToCount: 8192), !chunk.isEmpty else { break }
+      data.append(chunk)
+    }
+  } catch {
+    return nil
+  }
+  return data.isEmpty || data.count > max ? nil : data
+}
