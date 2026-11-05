@@ -36,6 +36,18 @@ Run on 2026-11-05 from `example/android` with `./gradlew :barometer_flutter:conn
 
 As before, these runs use the plugin's own test APK, not a Flutter application.
 
+## Method Channel
+
+Run on 2026-11-05 from `example/android` with `./gradlew :barometer_flutter:connectedDebugAndroidTest` and the library above, after the Dart API and the Android channel host were added. Besides the 13 tests above, `ChannelDeviceTest` (4 tests) drives `BarometerHost`, the channel handler, against the facade with the test package's trusted local document: no client before `initialize`, the lifecycle through the channel, native installation of an embedded asset and of a remote package with admission by Go, and refusal of trust inputs as channel arguments. It contacts no network.
+
+| Target | Model | OS | ABI | Instrumented tests |
+|---|---|---|---|---|
+| Emulator, `system-images;android-21;default;arm64-v8a` | Android SDK built for arm64 | Android 5.0.2 (API 21) | `arm64-v8a` | 17 of 17 passed |
+| Emulator, `system-images;android-24;default;arm64-v8a` | Android SDK built for arm64 | Android 7.0 (API 24) | `arm64-v8a` | 17 of 17 passed |
+| Emulator, `system-images;android-35;default;arm64-v8a` | Android SDK built for arm64 | Android 15 (API 35) | `arm64-v8a` | 17 of 17 passed |
+
+These runs use the plugin's own test APK; the channel host is called directly, not through a Flutter engine.
+
 ## DEV-725: Adapters, TCP-01 and DNS-01
 
 Run on 2026-11-04 from `example/android` with `./gradlew :barometer_flutter:connectedDebugAndroidTest`, which runs the plugin's instrumented tests: `AdapterDeviceTest` (6 tests) and `RecordStoreDeviceTest` (7 tests, from DEV-724). `AdapterDeviceTest` initializes a facade client with the Android adapters, the state store and a synthetic trusted local document, runs TCP-01 to `1.1.1.1:443` and DNS-01 for `example.org` through the platform resolver, each through `StartRun`, `NextBundle` and `AcknowledgeBundle`, and checks that the coarse access state holds only the fixed values and that no result retains the target.

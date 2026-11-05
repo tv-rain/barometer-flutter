@@ -72,6 +72,8 @@ dependencies {
 
     // Test-only; not part of the plugin's runtime dependencies.
     testImplementation("junit:junit:4.13.2")
+    // The Android SDK's org.json is a stub in host tests.
+    testImplementation("org.json:json:20240303")
     androidTestImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
