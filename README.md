@@ -4,7 +4,7 @@
 
 ## Current Status
 
-This repository is a skeleton. The plugin builds for Android and iOS and links the native Barometer library, but it has no Dart API, opens no platform channel and calls no Barometer code at registration or launch. The Android and iOS native adapters and state stores exist and are exercised by native tests only; the Dart API and the wiring between it and the adapters arrive later in Phase 3 milestone M2. The package is not published (`publish_to: none`); publication is planned with the Phase 5 release.
+The plugin builds for Android and iOS and links the native Barometer library. It has a public Dart API, [`BarometerClient`](#dart-api), and on Android a method channel that drives the facade client with the Android adapters and state store. The iOS side of the channel is not wired yet: on iOS every call fails with Flutter's `MissingPluginException`. The Apple adapters and state store exist and are exercised by native tests only. The example application does not run a measurement yet. Nothing runs at plugin registration or application launch. The package is not published (`publish_to: none`); publication is planned with the Phase 5 release.
 
 A successful build establishes compiler and linker compatibility for the recorded inputs only. It does not establish loading or execution on a device, emulator or simulator, conformance, safety, or support for any platform version. Barometer Draft `0.1.0` status is unchanged.
 
@@ -17,6 +17,76 @@ A successful build establishes compiler and linker compatibility for the recorde
 | iOS | 15.0 |
 
 These follow the supported platform matrix of [decision 0014](https://github.com/tv-rain/barometer/blob/main/docs/decisions/0014-gomobile-facade-and-platform-matrix.md#supported-platform-matrix). Being inside the matrix is a target, not a support claim. The matrix's Android API 21 applies to the native library and to non-Flutter hosts. A Flutter application cannot run below API 24: Flutter 3.47.8 sets 24 as the default application minSdk, warns below 24 and fails the build below 23. The plugin keeps minSdk 21 only to match the native library it packages, so it adds no constraint of its own.
+
+## Dart API
+
+```dart
+final client = BarometerClient();          // no native work
+await client.initialize({});               // creates the native client
+final task = await client.admitTask(embeddedTask('tcp-check'));
+final run = await client.startRun(task);
+final state = await client.runState(run); // {'state': 'active'} or {'state': 'terminal'}
+final bundle = await client.nextBundle();  // Bundle? with id and exact bytes
+if (bundle != null) await client.acknowledgeBundle(bundle.id);
+await client.close();
+```
+
+| Call | Result | Facade call |
+|---|---|---|
+| `BarometerClient()` | | None: construction makes no channel call, loads no library and opens no storage |
+| `initialize(Map config)` | | Creates the record store and facade client if there is none, then `Initialize` with the configuration as JSON text |
+| `admitTask(TaskSource)` | `TaskHandle` | `InstallEmbeddedTask` or `InstallRemoteTask`, then `AdmitTask` |
+| `startRun(TaskHandle)` | `RunHandle` | `StartRun` |
+| `runState(RunHandle)` | `Map`: `{'state': 'active'}` or `{'state': 'terminal'}` | `RunState` |
+| `cancelRun(RunHandle)` | | `CancelRun` |
+| `nextBundle()` | `Bundle?` | `NextBundle`; null when none is pending |
+| `acknowledgeBundle(String id)` | | `AcknowledgeBundle` |
+| `setProxy(Map)` / `clearProxy()` | | `SetProxy` with the map as JSON text / `ClearProxy` |
+| `clearMeasurementData()` | | `ClearMeasurementData` |
+| `close()` | | `Close`, then closes the record store; succeeds without a client |
+
+Task sources:
+
+- `embeddedTask(name)`: the task shipped with the application as the Android asset `barometer/tasks/<name>.json` (`src/main/assets/barometer/tasks/` of the application module). Native code reads it and installs it with the embedded issuer of the trusted local document. A name is 1 to 64 lowercase ASCII letters, digits, `_` and `-`, starting with a letter or digit, so it cannot leave that directory.
+- `installRemoteTask(Uint8List signedPackage)`: a signed remote task package, passed unchanged. Native code installs it as a remote delivery record and admits it; Go verifies the signature against the issuer keys of the trusted local policy ([decision 0011](https://github.com/tv-rain/barometer/blob/main/docs/decisions/0011-library-verified-signed-remote-tasks.md)). Each admission installs a new single-use record.
+
+The embedded issuer is the one issuer of the trusted local document's policy that has no trusted key. An issuer with a key can sign remote packages, while a keyless issuer can only be reached through an embedded delivery. If the policy has no keyless issuer or more than one, embedded tasks are not installed and `admitTask` fails with `delivery_unavailable`.
+
+`TaskHandle` and `RunHandle` are opaque and valid for one client generation. A `Bundle` carries its `id` and the exact UTF-8 JSON `bytes` Barometer stored; transport the bytes unchanged. `toJson()` decodes them.
+
+A failure throws `BarometerException(code)`. The code is the facade's code string, such as `not_initialized`, `already_initialized`, `handle_unavailable`, `run_not_due`, `bundle_unavailable`, `clearing_incomplete` or an admission class such as `task_source_unauthenticated`, and carries no other detail. The native layer raises some of these codes itself, and adds two of its own, `invalid_arguments` and `native_error`:
+
+| Code | Raised when |
+|---|---|
+| `not_initialized` | A call other than `initialize` or `close` is made while no native client exists |
+| `trust_invalid` | `initialize` cannot read the trusted local document asset `barometer/trust.json`, or the facade rejects it |
+| `storage_unavailable` | `initialize` cannot open the record store, for example because another owner holds it, or `close` cannot close it |
+| `delivery_unavailable` | The embedded task asset is missing, unreadable, empty or larger than 131,072 bytes, or the document names no unique embedded issuer |
+| `client_closed` | A call arrives after the Flutter engine detached the plugin |
+| `invalid_arguments` | A channel call has malformed arguments, or a configuration map holds a value that is not JSON. The Dart API sends no malformed call |
+| `native_error` | An unexpected native failure, or a bundle without an identifier. Its detail is not forwarded |
+
+`initialize` keeps the client it created when it fails, so the host can retry it, or recover with `clearMeasurementData` after `clearing_incomplete`. `clearMeasurementData` needs a native client, so call `initialize` first; it fails with `not_initialized` otherwise. A `close` that fails keeps the client so that it can be retried. The native client belongs to the Flutter engine: every `BarometerClient` of one engine drives the same native client, and detaching the engine closes it.
+
+## Channel Contract
+
+The method channel is `com.tvrain.barometer_flutter/client` with Flutter's standard method codec. Every argument is JSON text, an opaque handle, a bundle identifier, an embedded task name or signed package bytes. None is a trust input: no call installs a local policy, approval, trust root, issuer association or adapter, and the issuer of an embedded task and the trusted local document come only from the application package.
+
+| Method | Arguments | Result |
+|---|---|---|
+| `initialize` | `{config: String}` | null |
+| `admitTask` | `{source: 'embedded', name: String}` or `{source: 'remote', package: Uint8List}` | task handle `String` |
+| `startRun` | `{task: String}` | run handle `String` |
+| `runState` | `{run: String}` | `{state: String}` |
+| `cancelRun` | `{run: String}` | null |
+| `nextBundle` | none | bundle bytes `Uint8List`, or null |
+| `acknowledgeBundle` | `{id: String}` | null |
+| `setProxy` | `{proxy: String}` | null |
+| `clearProxy`, `clearMeasurementData`, `close` | none | null |
+
+The native handler accepts an argument map only when its keys are exactly those listed, rejects anything else with `invalid_arguments`, and reports any other method as not implemented. JSON texts are bounded to 65,536 characters, handles and identifiers to 256 and packages to 131,072 bytes; the facade applies its own, smaller bounds. Errors are `PlatformException`s whose code is the error code above, with no message or details.
+
+On Android, `BarometerFlutterPlugin` only registers the handler. Each call runs on one of at most four worker threads, never on the UI thread, and its answer is posted to the main looper. The record store is the plugin's `default` scope. Changing the Dart API or this contract is a reviewed public-API change.
 
 ## Native Library
 
@@ -54,7 +124,7 @@ The remaining facade callbacks that `Initialize`, TCP-01 and DNS-01 need have An
 | `Network` | `ConnectivityManager` default network | Type `wifi`, `cellular`, `ethernet` or `other`; IPv4 and IPv6 `yes` or `no` from the link's address families; VPN, validation and captive portal `unknown`. The generation changes only when the default network or these values change |
 | `SystemResolver` | `InetAddress.getAllByName` on a worker thread | Canonical addresses of the requested family; any failure, including an unknown name, is an error |
 
-No adapter reads an address, network name, operator, subscriber, account or device identifier into a value it returns. The linkage key store is not installed, so linkage is disabled. The trusted local document is read only from the application asset `barometer/trust.json` by `TrustDocument`; it is never taken from Dart. Wiring the client into the plugin and the Dart API is later work. Validation evidence is in [docs/android-validation.md](docs/android-validation.md).
+No adapter reads an address, network name, operator, subscriber, account or device identifier into a value it returns. The linkage key store is not installed, so linkage is disabled. The trusted local document is read only from the application asset `barometer/trust.json` by `TrustDocument`; it is never taken from Dart. The method-channel host creates the client at `initialize` (see [Channel Contract](#channel-contract)). Validation evidence is in [docs/android-validation.md](docs/android-validation.md).
 
 ## Apple Adapters
 
@@ -83,6 +153,7 @@ bash scripts/build-native.sh apple
 flutter pub get
 dart format --output=none --set-exit-if-changed .
 flutter analyze
+flutter test
 cd example
 flutter test
 flutter build apk --debug
@@ -102,7 +173,7 @@ cd ../..
 bash scripts/ios-record-store-kill-test.sh <udid>
 ```
 
-CI runs the same steps on `ubuntu-24.04` for Android and `macos-15` for iOS.
+CI runs the same steps on `ubuntu-24.04` for Android and `macos-15` for iOS, except the instrumented tests, which need an emulator or device.
 
 ## Repository Boundaries
 

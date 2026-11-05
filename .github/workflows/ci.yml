@@ -37,6 +37,8 @@ jobs:
         run: dart format --output=none --set-exit-if-changed .
       - name: Analyze
         run: flutter analyze
+      - name: Test plugin
+        run: flutter test
       - name: Test example
         working-directory: example
         run: flutter test
@@ -86,6 +88,10 @@ jobs:
         if: matrix.target == 'android'
         working-directory: example
         run: flutter build apk --debug
+      - name: Run Android unit tests
+        if: matrix.target == 'android'
+        working-directory: example/android
+        run: ./gradlew :barometer_flutter:testDebugUnitTest
       - name: Build iOS example
         if: matrix.target == 'apple'
         working-directory: example

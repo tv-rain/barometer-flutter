@@ -1,0 +1,1 @@
+{"schema_version":"0.1.0","task_id":"channel-expired","test_id":"TCP-01","test_version":"0.1.0","input":{"ip_address":"192.0.2.1","port":443},"options":{},"schedule":{"not_after":"2026-01-01T00:00:00Z"},"execution":{"limits":{}},"safety":{"risk_level":"low","requires_user_consent":false}}
