@@ -120,13 +120,13 @@ jobs:
             flutter test integration_test -d emulator-5554
       - name: Run integration test on an iOS simulator
         if: matrix.target == 'apple'
+        timeout-minutes: 25
         working-directory: example
         run: |
-          device=$(xcrun simctl list devices available -j | jq -r '[.devices | to_entries[] | select(.key | test("iOS")) | .key as $runtime | .value[] | select(.name | startswith("iPhone")) | "\(.udid) \($runtime) \(.name)"] | last')
+          device=$(xcrun simctl list devices available -j | jq -r '[.devices | to_entries[] | select(.key | test("iOS")) | .key as $runtime | .value[] | select(.name | test("^iPhone [0-9]+$")) | "\(.udid) \($runtime) \(.name)"] | sort_by(split(" ")[1] | split("-")[1:] | map(tonumber)) | last')
           echo "$device"
           udid=${device%% *}
-          xcrun simctl boot "$udid"
           xcrun simctl bootstatus "$udid" -b
-          flutter test integration_test -d "$udid"
+          flutter test integration_test -d "$udid" --verbose
       - name: Check tracked files remain unchanged
         run: git diff --exit-code
