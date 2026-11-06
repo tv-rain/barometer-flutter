@@ -57,7 +57,7 @@ Run on 2026-11-05 from `example` with `flutter test integration_test -d <device>
 | Emulator, `system-images;android-35;default;arm64-v8a` | Android SDK built for arm64 | Android 15 (API 35) | `arm64-v8a` | 1 of 1 passed |
 | CI emulator on `ubuntu-24.04`, `system-images;android-35;default;x86_64` | Emulator AVD created by `reactivecircus/android-emulator-runner` | Android 15 (API 35) | `x86_64` | 1 of 1 passed |
 
-The CI row ran with Flutter 3.47.8 and a library built in the same job by `scripts/build-native.sh android` at the same pin; CI runs it on every pull request. This is the first run of the plugin inside a Flutter application on Android: the Dart API, the method channel, the native host, the adapters and the facade together. No API 24 emulator ran it, because the host was out of disk space.
+The CI row ran with Flutter 3.47.8 and a library built in the same job by `scripts/build-native.sh android` at the same pin; the manually started device build workflow runs it. This is the first run of the plugin inside a Flutter application on Android: the Dart API, the method channel, the native host, the adapters and the facade together. No API 24 emulator ran it, because the host was out of disk space.
 
 ## DEV-725: Adapters, TCP-01 and DNS-01
 

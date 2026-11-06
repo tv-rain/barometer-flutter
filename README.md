@@ -163,7 +163,7 @@ export BAROMETER_FLUTTER_UMBRELLA_MODULE=<module name of the umbrella framework>
 flutter build ios --debug --simulator
 ```
 
-The Gradle properties can also be passed as `ORG_GRADLE_PROJECT_barometerUmbrellaArtifact` and `ORG_GRADLE_PROJECT_barometerUmbrellaRepository`, which `flutter test integration_test` also honors. Umbrella mode has been built and its integration test run locally on an Android emulator, an iOS simulator and an iPhone against an umbrella artifact that binds `barometermobile` with other Go packages. CI builds the example in umbrella mode with the standalone library standing in for the umbrella artifact, and runs tests in standalone mode only.
+The Gradle properties can also be passed as `ORG_GRADLE_PROJECT_barometerUmbrellaArtifact` and `ORG_GRADLE_PROJECT_barometerUmbrellaRepository`, which `flutter test integration_test` also honors. Umbrella mode has been built and its integration test run locally on an Android emulator, an iOS simulator and an iPhone against an umbrella artifact that binds `barometermobile` with other Go packages. The device build workflow builds the example in umbrella mode with the standalone library standing in for the umbrella artifact, and runs tests in standalone mode only.
 
 ## Android State Storage
 
@@ -236,7 +236,7 @@ cd ../..
 bash scripts/ios-record-store-kill-test.sh <udid>
 ```
 
-CI runs the same steps on `ubuntu-24.04` for Android and `macos-15` for iOS, except the plugin's instrumented tests and XCTests. It runs the example's integration test on an API 35 `x86_64` Android emulator and on an iPhone simulator of the newest iOS runtime installed on the runner.
+CI runs formatting, analysis and the Dart tests on every pull request and push to `main`. The native builds run in the separate device build workflow, which is started manually from the Actions tab when a change touches the native glue, the example, the build scripts or the `barometer-go` pin, and before an Epic closes. It runs the same steps on `ubuntu-24.04` for Android and `macos-15` for iOS, except the plugin's instrumented tests and XCTests, and runs the example's integration test on an API 35 `x86_64` Android emulator and on an iPhone simulator of the newest iOS runtime installed on the runner.
 
 ## Repository Boundaries
 
