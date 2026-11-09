@@ -13,7 +13,14 @@ struct RecordStoreError: Error {}
 /// here synchronizes, reads the clock or works in the background. One file holds one record and
 /// is named by its key, `"<class>-<64 lowercase hex digits>"`. A put writes a temporary file and
 /// renames it over the record, so after a process kill either the earlier value or the new one
-/// is stored, never a mixture. Durability across power loss and a full disk is not claimed.
+/// is stored, never a mixture. On a full disk a put fails and the earlier value stays stored.
+/// Durability across power loss is not claimed.
+///
+/// Clearing must succeed on a full disk, and it starts by storing a clearing marker (class 4).
+/// The scope therefore keeps a reserve file of 256 KiB, `clearing.reserve`, next to the records
+/// directory: a put of a clearing marker deletes it first and commits the deletion, so the
+/// marker fits, and it is allocated again once no marker is stored, or when the scope is
+/// opened, if space allows. The reserve holds only zero bytes.
 ///
 /// Every call runs on one serial dispatch queue, in arrival order, and the caller waits at most
 /// its `timeoutMillis`. A call still queued at its deadline is withdrawn and never runs; a call
@@ -39,12 +46,15 @@ final class RecordStore {
   private static let clearingClass: Int64 = 4
   private static let closeBoundMillis = 5_000
   private static let tempPrefix = ".tmp-"
+  private static let reserveName = "clearing.reserve"
+  private static let reserveBytes = 262_144
 
   /// Canonical scope directories open in this process, guarded by `ownersLock`.
   private static var owners = Set<String>()
   private static let ownersLock = NSLock()
 
   private let records: String
+  private let reserve: String
   private let ownerKey: String
   private let lockFD: Int32
   private let isMainThread: () -> Bool
@@ -60,6 +70,7 @@ final class RecordStore {
 
   private init(records: String, ownerKey: String, lockFD: Int32, isMainThread: @escaping () -> Bool) {
     self.records = records
+    self.reserve = ownerKey + "/" + Self.reserveName
     self.ownerKey = ownerKey
     self.lockFD = lockFD
     self.isMainThread = isMainThread
@@ -84,6 +95,7 @@ final class RecordStore {
     let copy = Data(value)
     try serial(timeoutMillis) {
       if cls != Self.clearingClass && !self.markers.isEmpty { throw RecordStoreError() }
+      if cls == Self.clearingClass { self.releaseReserve() }
       defer { if cls == Self.clearingClass { self.refreshMarker(key) } }
       try self.write(key, copy)
     }
@@ -93,7 +105,12 @@ final class RecordStore {
   func delete(_ key: String, timeoutMillis: Int64) throws {
     let cls = try Self.checkKey(key)
     try serial(timeoutMillis) {
-      defer { if cls == Self.clearingClass { self.refreshMarker(key) } }
+      defer {
+        if cls == Self.clearingClass {
+          self.refreshMarker(key)
+          if self.markers.isEmpty { self.allocateReserve() }
+        }
+      }
       if unlink(self.path(key)) != 0 && errno != ENOENT { throw RecordStoreError() }
     }
   }
@@ -205,6 +222,34 @@ final class RecordStore {
     }
   }
 
+  /// Deletes the reserve and commits the deletion, so that the file system can reuse its space
+  /// for the next write.
+  private func releaseReserve() {
+    if unlink(reserve) != 0 { return }
+    let dir = Darwin.open(scopeDirectory.path, O_RDONLY | O_CLOEXEC)
+    if dir < 0 { return }
+    if fcntl(dir, F_FULLFSYNC) != 0 { fsync(dir) }
+    Darwin.close(dir)
+  }
+
+  /// Allocates the reserve if it is missing and space allows; a failure leaves none.
+  private func allocateReserve() {
+    var info = stat()
+    if stat(reserve, &info) == 0 && info.st_size == Self.reserveBytes { return }
+    let fd = Darwin.open(reserve, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0o600)
+    if fd < 0 { return }
+    let zeros = [UInt8](repeating: 0, count: Self.reserveBytes)
+    var n = 0
+    while n < zeros.count {
+      let w = zeros.withUnsafeBytes { Darwin.write(fd, $0.baseAddress! + n, $0.count - n) }
+      if w < 0 && errno == EINTR { continue }
+      if w <= 0 { break }
+      n += w
+    }
+    let ok = n == zeros.count && fsync(fd) == 0
+    if Darwin.close(fd) != 0 || !ok { unlink(reserve) }
+  }
+
   private func refreshMarker(_ key: String) {
     if access(path(key), F_OK) == 0 { markers.insert(key) } else { markers.remove(key) }
   }
@@ -239,6 +284,7 @@ final class RecordStore {
       if unlink(path(name)) != 0 && errno != ENOENT { throw RecordStoreError() }
     }
     markers = Set(try keys(Self.clearingClass))
+    if markers.isEmpty { allocateReserve() }
   }
 
   /// Opens `scope` under the application's Application Support directory.

@@ -6,7 +6,7 @@ No measurement result, outcome, device identifier, account, network name or addr
 
 ## Library Under Test
 
-The `Barometer.xcframework.build-info.txt` written by `scripts/build-native.sh apple` at the current pin, used by [Trust Store on the Device](#trust-store-on-the-device), [Oldest Runtime and `x86_64` Simulator](#oldest-runtime-and-x86_64-simulator), [Host Policy, Proxy and Signed Remote Tasks](#host-policy-proxy-and-signed-remote-tasks) and [Signals, Lifecycle and Linkage Keys](#signals-lifecycle-and-linkage-keys):
+The `Barometer.xcframework.build-info.txt` written by `scripts/build-native.sh apple` at the current pin, used by [Durability, Storage Full and the Nine Measurements](#durability-storage-full-and-the-nine-measurements), [Trust Store on the Device](#trust-store-on-the-device), [Oldest Runtime and `x86_64` Simulator](#oldest-runtime-and-x86_64-simulator), [Host Policy, Proxy and Signed Remote Tasks](#host-policy-proxy-and-signed-remote-tasks) and [Signals, Lifecycle and Linkage Keys](#signals-lifecycle-and-linkage-keys):
 
 ```text
 artifact: Barometer.xcframework
@@ -41,6 +41,52 @@ slices:
   ios-arm64_x86_64-simulator
 status: compiled only; not a release, not platform support
 ```
+
+## Durability, Storage Full and the Nine Measurements
+
+Run on 2026-11-09 on an Apple silicon host with Xcode 27.0 and Flutter 3.47.6, with the library at the current pin, on the project iPhone 13 (`iPhone14,5`) on iOS 27.2 (24B119), connected by USB, and on iOS 27.0 (24A434) iPhone 17 simulators created for the runs and deleted afterwards. The device runs used Xcode automatic signing under a development team passed only on the command line; no team, identity, profile or device identifier is committed. The application was installed over the existing one and never uninstalled, and the device was not restarted.
+
+**XCTests on the device.** The full `RunnerTests` suite, including the tests of [Signals, Lifecycle and Linkage Keys](#signals-lifecycle-and-linkage-keys) and [Host Policy, Proxy and Signed Remote Tasks](#host-policy-proxy-and-signed-remote-tasks), ran from `example/ios` with `xcodebuild test -destination 'platform=iOS,id=<udid>'` after `flutter build ios --debug --no-codesign`: 71 tests, 62 passed and 9 skipped (the trust test without its environment, the process-kill helpers, the two durability phases, the two reinstall phases, the storage-full test and the network-change test, each run only by its script or with its environment). `LinkageKeysTests` and the clear-data rows of `LifecycleTests` therefore ran against the device's Keychain. `LocalPolicyTests` first failed on the device: the phone reports a known battery level and charging state that meet the test's constraint, so its run with the production device source started, and the test read that run's cancelled bundle in place of the next one. The test now completes and acknowledges that run, and passes on the device and on simulators, where the reading is unknown.
+
+**Durability and process kill.** `bash scripts/ios-record-store-kill-test.sh <udid> 5` with the signing settings as `xcodebuild` arguments. Five rounds of `RecordStoreKillTests`: a test process replacing a record of the largest size with alternating values is killed with `SIGKILL` mid-write, and the next process finds either the earlier or the new value, never a mixture, the record written before the loop unchanged and no temporary file. Then `DurabilityTests`, the iOS counterpart of Android's `DurabilityDeviceTest`: a test process runs a one-time task and a repeating task (at most two runs, six hours apart) to completion on the proxy path through a loopback proxy that answers CONNECT without contacting the target, keeps their bundle pending, checks that a task reusing the one-time task's identifier with other content is rejected as `task_id_conflict`, starts a third attempt on a proxy that never answers and kills itself with `SIGKILL` while that attempt is active. The next process finds the same oldest pending bundle, byte for byte by SHA-256, both completed tasks `run_not_due` when admitted again as exact redeliveries, the conflicting task still `task_id_conflict` and the Keychain key present; `clearMeasurementData` then removes every record, the key and the sentinel. Both passed on the iPhone. A process kill stands in for power loss here and is not power-loss evidence: the device was not restarted, and power loss stays a deferred device check.
+
+**Storage full.** `bash scripts/ios-storage-full-check.sh "iPhone 17" com.apple.CoreSimulator.SimRuntime.iOS-27-0 512m` creates a simulator and mounts a 512 MiB APFS disk image in place of the directory that holds its applications' data containers, so the test application's container is on a volume that the test can fill while the simulator's system data and Keychain stay on the host, as an application fills its own storage on a device. `StorageFullTests` stores a completed run's records, a pending bundle, the Keychain key and the sentinel (that run contacts `1.1.1.1:443` directly, so that linkage derives the key), admits a second task, and fills the volume with a filler file until a new 4 KiB file no longer fits. On the full volume a new task is rejected as `task_trust_unavailable`, the admitted task returns `run_not_due`, the stored record files are unchanged and no temporary file is left behind. `clearMeasurementData`, still on the full volume, returns within 10 seconds and leaves no record, no Keychain key and no sentinel. The check passed in three of three runs.
+
+Earlier attempts placed the simulator's whole device directory on the image. There, without a reserve, clearing failed with `clearing_incomplete` because the clearing marker could not be stored; with a reserve it still failed in some runs, either because the space the reserve released was taken by the simulator's own processes before the marker was written, or because the Keychain, which shared the full volume, could not delete the key; in every such run clearing completed once the filler was removed. The record store now keeps a reserve file of 256 KiB per scope, released and committed before a clearing marker is stored ([Apple State Storage](../README.md#apple-state-storage)), and the check fills only the application's containers.
+
+**The nine measurements from Dart.** `example/integration_test/measurements_test.dart` runs TCP-01, DNS-01, DNS-03, DNS-04, TLS-01, HTTP-01, NET-01, NET-03 and NET-05 from Dart through `BarometerClient`, each as a synthetic one-time embedded task from `example/barometer-fixtures/` ([README](../README.md#measurement-fixtures)). `scripts/ios-measurement-fixtures.sh start` served the fixtures of `scripts/measurement_fixtures.py` on the host's own stable global IPv6 address, answering only peers of the host's on-link prefix, and the build phase wrote that address into the tasks in place of `8.8.8.8`; the address is not recorded. On the simulator, which shares the host's network, the run's CA was added to the simulator's trust store, and the test checked for each task one result with execution state `completed` from platform `ios`, no pending bundle after the acknowledgement, and the observation types and outcomes of the [Android record](android-validation.md#durability-full-disk-and-the-nine-measurements), except NET-05: iOS reports network validation as `unknown`, so NET-05 stops before its first step with `inconclusive`. The outcomes are those of synthetic fixtures, not measurement data, and no result was printed or recorded.
+
+On the iPhone the same nine tasks ran from Dart, but the fixtures were not reachable: every connection to the host's address failed (TCP-01 `address_unreachable`, DNS-01 `resolver_error`, the others failing at their first connection), while public IPv6 destinations were reachable from the same application. A probe connection from the test application to the host's address waited with "Network is down", which is consistent with iOS refusing the example the local network, for which it asks the user's permission; that permission was not given, and the CA was not installed on the device. The device runs therefore checked each task's lifecycle and result shape only (`BAROMETER_FIXTURE_CHECK=shape`): one result with execution state `completed` from platform `ios` and no pending bundle after the acknowledgement. They were profile builds launched with `devicectl` and read back from the application's container, because a debug run waited for Xcode to prepare the device's debug symbols, which did not fit on the host's disk.
+
+| Target | Build | Fixtures | Nine measurements from Dart |
+|---|---|---|---|
+| Simulator, iOS 27.0 (24A434), iPhone 17 | Standalone (the library above) | Reached; CA trusted | 1 of 1 passed: all nine outcomes as expected |
+| Simulator, iOS 27.0 (24A434), iPhone 17 | Umbrella (below) | Reached; CA trusted | 1 of 1 passed: all nine outcomes as expected |
+| iPhone 13 (`iPhone14,5`), iOS 27.2 (24B119) | Standalone, profile | Not reached (local network not allowed) | 1 of 1 passed, lifecycle and result shape only |
+| iPhone 13 (`iPhone14,5`), iOS 27.2 (24B119) | Umbrella, profile | Not reached (local network not allowed) | 1 of 1 passed, lifecycle and result shape only |
+
+In umbrella mode the example linked the facade once, into the Runner binary, and its bundle held no `Barometer` or `barometer_flutter` dynamic framework. The umbrella XCFramework was built locally from the CircumRain umbrella's `barometer-integration` branch (`b4e7560`) with `make bind-ios`, after `go get` raised its `barometer-go` requirement to the pin above; the raise was not committed there. Its own check (`make check-barometer-ios`) reported no skipped `barometermobile` exports and no build-host paths in its two libraries. Its build information:
+
+```text
+artifact: umbrella XCFramework (ios-arm64, ios-arm64_x86_64-simulator)
+binds: circum-rain-lib, circum-rain-config, barometermobile
+barometermobile: commit 7f5d7de7ada4709c1b2a4fdebbb4fb9b013ef918
+go: go1.26.2
+gomobile: golang.org/x/mobile v0.0.0-20260820023541-8e8303b9da6c
+flags: -trimpath -iosversion=15.0 -ldflags='-s -w'
+xcode: Xcode 27.0 Build version 27A266a
+status: local build for validation only; not a release, not platform support
+```
+
+**Network changes on the device.** `NetworkChangeDeviceTests` ran on the iPhone with `TEST_RUNNER_BAROMETER_NETWORK_CHANGE_TEST=10800,300` while a person switched the phone's Wi-Fi off and on. It reads the `Network` adapter's coarse access state every 250 ms and keeps one proxy-path TCP-01 attempt active on a loopback proxy that never answers. It observed three states, in this order:
+
+| Access generation | Network type | VPN | IPv4 | IPv6 |
+|---|---|---|---|---|
+| +0 (start) | `wifi` | `not_detected` | `yes` | `yes` |
+| +1 (Wi-Fi off) | `cellular` | `not_detected` | `yes` | `no` |
+| +2 (Wi-Fi on) | `wifi` | `not_detected` | `yes` | `yes` |
+
+Then Xcode lost the test process ("An error occurred while communicating with a remote process") and the run ended with exit code 65. The test's own assertions (that the generation advanced and that an attempt active across a change ended with `network_changed`) therefore did not run on the device, and airplane mode and a VPN were not exercised. The cause of the lost connection is not confirmed. The run was not repeated; the remaining check is deferred in [Deferred Device Checks](https://github.com/tv-rain/barometer/blob/main/docs/device-checks.md#ios-checks). A five-second run with no change, before it, failed as expected: no network change, and its attempts ended `incomplete` with `proxy_connect_failed`.
 
 ## Trust Store on the Device
 

@@ -22,6 +22,9 @@
 		D0A72E4B2F00000000000001 /* RemoteTaskTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0A72E4A2F00000000000001 /* RemoteTaskTests.swift */; };
 		D0A72E5B2F00000000000001 /* TrustRootDeviceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0A72E5A2F00000000000001 /* TrustRootDeviceTests.swift */; };
 		D0A72D0B2F00000000000001 /* LinkageKeysTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0A72D0A2F00000000000001 /* LinkageKeysTests.swift */; };
+		D0A72E6B2F00000000000001 /* DurabilityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0A72E6A2F00000000000001 /* DurabilityTests.swift */; };
+		D0A72E7B2F00000000000001 /* StorageFullTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0A72E7A2F00000000000001 /* StorageFullTests.swift */; };
+		D0A72E8B2F00000000000001 /* NetworkChangeDeviceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0A72E8A2F00000000000001 /* NetworkChangeDeviceTests.swift */; };
 		D0A7290D2F00000000000001 /* barometer in Resources */ = {isa = PBXBuildFile; fileRef = D0A7290C2F00000000000001 /* barometer */; };
 		3B3967161E833CAA004F5970 /* AppFrameworkInfo.plist in Resources */ = {isa = PBXBuildFile; fileRef = 3B3967151E833CAA004F5970 /* AppFrameworkInfo.plist */; };
 		74858FAF1ED2DC5600515810 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74858FAE1ED2DC5600515810 /* AppDelegate.swift */; };
@@ -73,6 +76,9 @@
 		D0A72E4A2F00000000000001 /* RemoteTaskTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteTaskTests.swift; sourceTree = "<group>"; };
 		D0A72E5A2F00000000000001 /* TrustRootDeviceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrustRootDeviceTests.swift; sourceTree = "<group>"; };
 		D0A72D0A2F00000000000001 /* LinkageKeysTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LinkageKeysTests.swift; sourceTree = "<group>"; };
+		D0A72E6A2F00000000000001 /* DurabilityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DurabilityTests.swift; sourceTree = "<group>"; };
+		D0A72E7A2F00000000000001 /* StorageFullTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageFullTests.swift; sourceTree = "<group>"; };
+		D0A72E8A2F00000000000001 /* NetworkChangeDeviceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkChangeDeviceTests.swift; sourceTree = "<group>"; };
 		D0A7290C2F00000000000001 /* barometer */ = {isa = PBXFileReference; lastKnownFileType = folder; path = barometer; sourceTree = "<group>"; };
 		331C8081294A63A400263BE5 /* RunnerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RunnerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		3B3967151E833CAA004F5970 /* AppFrameworkInfo.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = AppFrameworkInfo.plist; path = Flutter/AppFrameworkInfo.plist; sourceTree = "<group>"; };
@@ -136,6 +142,9 @@
 				D0A72E4A2F00000000000001 /* RemoteTaskTests.swift */,
 				D0A72E5A2F00000000000001 /* TrustRootDeviceTests.swift */,
 				D0A72D0A2F00000000000001 /* LinkageKeysTests.swift */,
+				D0A72E6A2F00000000000001 /* DurabilityTests.swift */,
+				D0A72E7A2F00000000000001 /* StorageFullTests.swift */,
+				D0A72E8A2F00000000000001 /* NetworkChangeDeviceTests.swift */,
 				D0A7290C2F00000000000001 /* barometer */,
 			);
 			path = RunnerTests;
@@ -411,7 +420,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "# Writes the synthetic Barometer files from example/barometer into the app bundle as\n# barometer/trust.json and barometer/tasks/<name>.json. __BUILD_STAMP__ becomes the build\n# time in Unix seconds. In trust.json __EXPIRES_AT__ becomes the build time plus six days\n# (the target registration expiry) and __TASK_SHA256_<name>__ the SHA-256 digest of the\n# written tasks/<name>.json, which lists that one-time embedded task without not_after as\n# release-reviewed.\nset -eu\nsrc=\"${SRCROOT}/../barometer\"\ndst=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/barometer\"\nnow=$(date -u +%s)\nexpires=$(date -u -r $((now + 518400)) +%Y-%m-%dT%H:%M:%SZ)\nrm -rf \"$dst\"\nmkdir -p \"$dst/tasks\"\nsubst=\"-e s/__EXPIRES_AT__/$expires/g\"\nfor f in \"$src\"/tasks/*.json; do\n  name=$(basename \"$f\" .json)\n  sed -e \"s/__BUILD_STAMP__/$now/g\" \"$f\" > \"$dst/tasks/$name.json\"\n  digest=$(shasum -a 256 \"$dst/tasks/$name.json\" | cut -d ' ' -f 1)\n  subst=\"$subst -e s/__TASK_SHA256_${name}__/$digest/g\"\ndone\n# shellcheck disable=SC2086\nsed $subst \"$src/trust.json\" > \"$dst/trust.json\"\nif grep -q '__' \"$dst/trust.json\"; then\n  echo 'error: unfilled placeholder in trust.json' >&2\n  exit 1\nfi\n";
+			shellScript = "# Writes the synthetic Barometer files from example/barometer, or from\n# example/barometer-fixtures when BAROMETER_EXAMPLE_ASSETS is barometer-fixtures, into the app\n# bundle as barometer/trust.json and barometer/tasks/<name>.json. __BUILD_STAMP__ becomes the\n# build time in Unix seconds. In trust.json __EXPIRES_AT__ becomes the build time plus six days\n# (the target registration expiry) and __TASK_SHA256_<name>__ the SHA-256 digest of the\n# written tasks/<name>.json, which lists that one-time embedded task without not_after as\n# release-reviewed. With the fixture set, BAROMETER_FIXTURE_ADDRESS (an IPv6 address from\n# scripts/ios-measurement-fixtures.sh) replaces the fixture address 8.8.8.8 everywhere.\nset -eu\nassets=${BAROMETER_EXAMPLE_ASSETS:-barometer}\ncase \"$assets\" in\n  barometer | barometer-fixtures) ;;\n  *) echo 'error: BAROMETER_EXAMPLE_ASSETS must be barometer or barometer-fixtures' >&2; exit 1 ;;\nesac\naddress=${BAROMETER_FIXTURE_ADDRESS:-}\nif [ -n \"$address\" ]; then\n  if [ \"$assets\" != barometer-fixtures ] || ! printf '%s' \"$address\" | grep -Eq '^[0-9a-f]*:[0-9a-f:]+$'; then\n    echo 'error: BAROMETER_FIXTURE_ADDRESS needs the fixture set and an IPv6 address' >&2\n    exit 1\n  fi\nfi\nfixture() {\n  if [ -n \"$address\" ]; then\n    sed -e \"s#//8\\.8\\.8\\.8/#//[$address]/#g\" -e 's/\"8\\.8\\.8\\.8\"/\"'\"$address\"'\"/g'\n  else\n    cat\n  fi\n}\nsrc=\"${SRCROOT}/../$assets\"\ndst=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/barometer\"\nnow=$(date -u +%s)\nexpires=$(date -u -r $((now + 518400)) +%Y-%m-%dT%H:%M:%SZ)\nrm -rf \"$dst\"\nmkdir -p \"$dst/tasks\"\nsubst=\"-e s/__EXPIRES_AT__/$expires/g\"\nfor f in \"$src\"/tasks/*.json; do\n  name=$(basename \"$f\" .json)\n  sed -e \"s/__BUILD_STAMP__/$now/g\" \"$f\" | fixture > \"$dst/tasks/$name.json\"\n  digest=$(shasum -a 256 \"$dst/tasks/$name.json\" | cut -d ' ' -f 1)\n  subst=\"$subst -e s/__TASK_SHA256_${name}__/$digest/g\"\ndone\n# shellcheck disable=SC2086\nsed $subst \"$src/trust.json\" | fixture > \"$dst/trust.json\"\nif grep -q '__' \"$dst/trust.json\"; then\n  echo 'error: unfilled placeholder in trust.json' >&2\n  exit 1\nfi\n";
 		};
 		F5B3C894E4FFB0CE6065922E /* [CP] Check Pods Manifest.lock */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -455,6 +464,9 @@
 				D0A72E4B2F00000000000001 /* RemoteTaskTests.swift in Sources */,
 				D0A72E5B2F00000000000001 /* TrustRootDeviceTests.swift in Sources */,
 				D0A72D0B2F00000000000001 /* LinkageKeysTests.swift in Sources */,
+				D0A72E6B2F00000000000001 /* DurabilityTests.swift in Sources */,
+				D0A72E7B2F00000000000001 /* StorageFullTests.swift in Sources */,
+				D0A72E8B2F00000000000001 /* NetworkChangeDeviceTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
