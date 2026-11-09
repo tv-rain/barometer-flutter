@@ -149,7 +149,17 @@
         "redirect_ids": []
       }
     ],
-    "keys": []
+    "keys": [],
+    "release_reviewed_tasks": [
+      {
+        "issuer_id": "example-embedded-issuer",
+        "task_sha256": "__TASK_SHA256_tcp-01__"
+      },
+      {
+        "issuer_id": "example-embedded-issuer",
+        "task_sha256": "__TASK_SHA256_dns-01__"
+      }
+    ]
   },
   "configuration_approvals": {
     "endpoints": [],

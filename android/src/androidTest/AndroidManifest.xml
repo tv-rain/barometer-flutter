@@ -7,5 +7,24 @@
         android:name="com.tvrain.barometer_flutter.WriterService"
         android:exported="false"
         android:process=":writer" />
+    <!-- Test-only: runs a facade client with an active attempt in its own process so tests can
+         kill it during the run. -->
+    <service
+        android:name="com.tvrain.barometer_flutter.RunnerService"
+        android:exported="false"
+        android:process=":runner" />
+    <!-- Test-only: asks for the VPN permission on API 21, which has no shell command for it. -->
+    <activity
+        android:name="com.tvrain.barometer_flutter.VpnConsentActivity"
+        android:exported="false" />
+    <!-- Test-only: a VPN for this application over a synthetic prefix. -->
+    <service
+        android:name="com.tvrain.barometer_flutter.TestVpnService"
+        android:exported="false"
+        android:permission="android.permission.BIND_VPN_SERVICE">
+      <intent-filter>
+        <action android:name="android.net.VpnService" />
+      </intent-filter>
+    </service>
   </application>
 </manifest>

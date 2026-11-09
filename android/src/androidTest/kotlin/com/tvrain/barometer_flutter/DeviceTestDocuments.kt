@@ -10,6 +10,24 @@ import org.json.JSONObject
 internal object DeviceTestDocuments {
     const val ISSUER = "embedded-issuer"
 
+    /** The connection code approved for the loopback proxies of the tests. */
+    const val CONNECTION_CODE = "synthetic_proxy"
+
+    /** A synthetic linkage scope. */
+    const val LINKAGE_SCOPE = "org.example.barometer.test"
+
+    /** `Initialize` configuration with rotating linkage under [LINKAGE_SCOPE] and [proxy]. */
+    fun linkedConfig(proxy: StallingProxy? = null): String {
+        val config = JSONObject().put("result_linkage", JSONObject().put("mode", "rotating_installation")
+            .put("scope", LINKAGE_SCOPE).put("rotation_period_seconds", 604800))
+        if (proxy != null) config.put("proxy", proxy.config())
+        return config.toString()
+    }
+
+    /** TCP-01 to 1.1.1.1:443, permitted on both paths. */
+    val TCP_TUPLE: JSONObject get() = JSONObject().put("address", "1.1.1.1").put("port", 443).put("scheme", "tcp")
+    val TCP_INPUT: JSONObject get() = JSONObject().put("ip_address", "1.1.1.1").put("port", 443)
+
     private fun utc(millis: Long): String =
         SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US)
             .apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }
@@ -31,10 +49,15 @@ internal object DeviceTestDocuments {
     /**
      * A synthetic `barometer-trust/1` document permitting [test] against one registered
      * target for the deployment and the embedded issuer, with [connectionCodes] approved for a
-     * host-configured proxy. It is built when the test runs because the registration expires
-     * 48 hours later.
+     * host-configured proxy and [linkageScopes] approved, with linkage allowed when there is
+     * one. It is built when the test runs because the registration expires 48 hours later.
      */
-    fun trustDocument(test: String, tuple: JSONObject, connectionCodes: List<String> = emptyList()): ByteArray {
+    fun trustDocument(
+        test: String,
+        tuple: JSONObject,
+        connectionCodes: List<String> = emptyList(),
+        linkageScopes: List<String> = emptyList(),
+    ): ByteArray {
         val testRef = JSONObject().put("id", test).put("version", "0.1.0")
         val paths = JSONObject().put("direct", true).put("proxy", true)
         val registration = JSONObject()
@@ -66,8 +89,8 @@ internal object DeviceTestDocuments {
         return JSONObject()
             .put("format", "barometer-trust/1").put("policy", policy)
             .put("configuration_approvals", JSONObject().put("endpoints", JSONArray())
-                .put("connection_codes", JSONArray(connectionCodes)).put("linkage_scopes", JSONArray())
-                .put("allow_linkage", false))
+                .put("connection_codes", JSONArray(connectionCodes)).put("linkage_scopes", JSONArray(linkageScopes))
+                .put("allow_linkage", linkageScopes.isNotEmpty()))
             .put("context_approvals", JSONObject().put("connection_codes", JSONArray())
                 .put("classification_versions", JSONArray()).put("country_codes", JSONArray())
                 .put("region_codes", JSONArray()))

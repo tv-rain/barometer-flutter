@@ -64,9 +64,9 @@ class AdapterDeviceTest {
             assertTrue(s.generation >= 1)
             assertTrue(s.networkType, s.networkType in setOf("wifi", "cellular", "ethernet", "other", "unknown"))
             for (v in listOf(s.ipv4, s.ipv6)) assertTrue(v, v in setOf("yes", "no", "unknown"))
-            assertEquals("unknown", s.vpn)
-            assertEquals("unknown", s.validated)
-            assertEquals("unknown", s.captivePortal)
+            assertTrue(s.vpn, s.vpn in setOf("detected", "not_detected", "unknown"))
+            for (v in listOf(s.validated, s.captivePortal)) assertTrue(v, v in setOf("yes", "no", "unknown"))
+            assertTrue(s.suspended, s.suspended in setOf("suspended", "active", "unknown"))
         }
     }
 

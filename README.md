@@ -66,7 +66,7 @@ A failure throws `BarometerException(code)`. The code is the facade's code strin
 | `invalid_arguments` | A channel call has malformed arguments, or a configuration map holds a value that is not JSON. The Dart API sends no malformed call |
 | `native_error` | An unexpected native failure, or a bundle without an identifier. Its detail is not forwarded |
 
-`initialize` keeps the client it created when it fails, so the host can retry it, or recover with `clearMeasurementData` after `clearing_incomplete`. `clearMeasurementData` needs a native client, so call `initialize` first; it fails with `not_initialized` otherwise. A `close` that fails keeps the client so that it can be retried. The native client belongs to the Flutter engine: every `BarometerClient` of one engine drives the same native client, and detaching the engine closes it.
+`initialize` keeps the client it created when it fails, so the host can retry it, or recover with `clearMeasurementData` after `clearing_incomplete`. `clearMeasurementData` needs a native client, so call `initialize` first; it fails with `not_initialized` otherwise. A `close` that fails keeps the client so that it can be retried. The native client belongs to the Flutter engine: every `BarometerClient` of one engine drives the same native client, and detaching the engine closes it, which cancels its active runs (recorded as `cancelled_by_host`) within the lifecycle deadline and releases the storage scope. A host that offers a user-visible action promising to remove local data, such as "clear local data" or "reset privacy data", must call `clearMeasurementData` from it; Barometer does not infer account semantics. The example application has no such action.
 
 ## Example Application
 
@@ -76,10 +76,10 @@ The synthetic files live in `example/barometer/`:
 
 | File | Content |
 |---|---|
-| `trust.json` | A `barometer-trust/1` document with one keyless issuer, `example-embedded-issuer`, permitted TCP-01 and DNS-01 at low risk on the direct path, without consent, against two registered targets: `1.1.1.1:443` over TCP and `example.org`. No keys, approvals, endpoints or linkage |
+| `trust.json` | A `barometer-trust/1` document with one keyless issuer, `example-embedded-issuer`, permitted TCP-01 and DNS-01 at low risk on the direct path, without consent, against two registered targets: `1.1.1.1:443` over TCP and `example.org`, and listing the two tasks below as release-reviewed by their SHA-256 digests. No keys, approvals, endpoints or linkage |
 | `tasks/tcp-01.json`, `tasks/dns-01.json` | One-run embedded tasks for those targets |
 
-They contain no secret, participant endpoint or personal data. Both tasks are one-time embedded tasks without `not_after`: repeat mode `none` and `max_runs` 1, which Barometer admits under the embedded one-time exception of the registered limits. That exception leaves two obligations with the host: release review fixes each such task to one run, and the host does not persist the task across application updates. The example ships its tasks in the application bundle and keeps no copy elsewhere. The files carry two placeholders that the build fills: `__EXPIRES_AT__` in the trusted local document becomes the build time plus six days (the target registration expiry) and `__BUILD_STAMP__` the build time in Unix seconds, which is part of each task identifier so that a rebuilt task never conflicts with a retained replay record. On Android the `barometerExampleAssets` Gradle task in `example/android/app/build.gradle.kts` writes them as generated assets; on iOS the **Generate Barometer Resources** build phase of the Runner target writes them into the application bundle. Because the target registrations expire, an example build is usable for six days. Each task runs once per build: pressing a button again admits the same task as a redelivery, whose run produces no new bundle, and the page reports `no bundle is pending`. A host application ships reviewed files instead; this generation exists only for the example.
+They contain no secret, participant endpoint or personal data. Both tasks are one-time embedded tasks without `not_after`: repeat mode `none` and `max_runs` 1, which Barometer admits under the embedded one-time exception of the registered limits. Barometer grants that exception only to a task that the trusted local document lists in `release_reviewed_tasks` by its embedded issuer and the SHA-256 digest of its exact bytes; any other embedded task without `not_after` is rejected as `task_schema_invalid`. The exception leaves two obligations with the host: release review fixes each such task to one run, and the host does not persist the task across application updates. The example ships its tasks in the application bundle and keeps no copy elsewhere. The files carry placeholders that the build fills: `__BUILD_STAMP__` in each task becomes the build time in Unix seconds, which is part of the task identifier so that a rebuilt task never conflicts with a retained replay record; in the trusted local document, `__EXPIRES_AT__` becomes the build time plus six days (the target registration expiry) and `__TASK_SHA256_<name>__` the digest of the written `tasks/<name>.json`, so the listing matches the exact bytes in the package. On Android the `barometerExampleAssets` Gradle task in `example/android/app/build.gradle.kts` writes them as generated assets; on iOS the **Generate Barometer Resources** build phase of the Runner target writes them into the application bundle. Because the target registrations expire, an example build is usable for six days. Each task runs once per build: pressing a button again admits the same task as a redelivery, whose run produces no new bundle, and the page reports `no bundle is pending`. A host application ships reviewed files instead; this generation exists only for the example.
 
 `example/integration_test/barometer_flow_test.dart` presses both buttons and checks that each run ends terminal with one completed result of the expected observation type and no pending bundle after the acknowledgement. Run it on an emulator or simulator:
 
@@ -169,7 +169,13 @@ The Gradle properties can also be passed as `ORG_GRADLE_PROJECT_barometerUmbrell
 
 ## Android State Storage
 
-The Android backend of the facade's `Records` port (`RecordStore.kt`) keeps the replay records, run ledger, pending bundles and clearing marker of one storage scope as one file per record under the application's `no_backup` directory (`Context.getNoBackupFilesDir()`), which Android excludes from cloud backup and device-to-device transfer. The plugin therefore adds no backup rules to the host application's manifest. A put writes a temporary file and renames it over the record, so a process kill leaves the earlier or the new value. All calls run in arrival order on one worker thread and wait at most their `timeoutMillis`; a call still queued at its deadline never runs, a running one finishes before any later call, and the caller gets an error in both cases. The facade hands a store's calls over one at a time in the order Go issues them, and never one whose deadline has passed, so arrival order is issue order and a write abandoned before a clear cannot arrive after it. While a clearing marker is stored, other puts are refused. A scope has one owner across threads and processes, and calls on the UI thread fail instead of blocking it. Durability across power loss or a full disk, OS or device clearing and reinstallation are not yet validated.
+The Android backend of the facade's `Records` port (`RecordStore.kt`) keeps the replay records, run ledger, pending bundles and clearing marker of one storage scope as one file per record under the application's `no_backup` directory (`Context.getNoBackupFilesDir()`), which Android excludes from cloud backup and device-to-device transfer. The plugin therefore adds no backup rules to the host application's manifest. A put writes a temporary file and renames it over the record, so a process kill leaves the earlier or the new value. All calls run in arrival order on one worker thread and wait at most their `timeoutMillis`; a call still queued at its deadline never runs, a running one finishes before any later call, and the caller gets an error in both cases. The facade hands a store's calls over one at a time in the order Go issues them, and never one whose deadline has passed, so arrival order is issue order and a write abandoned before a clear cannot arrive after it. While a clearing marker is stored, other puts are refused. A scope has one owner across threads and processes, and calls on the UI thread fail instead of blocking it. Operating-system data clearing ("Clear storage" in Settings) removes the scope with the rest of the application's data; `scripts/android-clear-storage-check.sh` checks it on an emulator. Durability across power loss or a full disk, reinstallation and backup and restore are not yet validated.
+
+## Android Linkage Keys
+
+From API 23 the backend of the facade's `LinkageKeyStore` port (`AndroidLinkageKeys.kt`) keeps one HMAC-SHA-256 key per storage scope in Android Keystore, under the alias `barometer-linkage-<scope>`. The key is created on the first derivation, never leaves Keystore and is never exported; derivation runs inside it. No StrongBox or hardware backing is required, so a device without a secure element, and every emulator, holds a software-backed key. Before API 23 Android Keystore cannot hold an HMAC key, so the adapter is not installed and result linkage stays disabled; nothing falls back to a key in memory or in a file.
+
+A reinstall sentinel, the non-secret file `linkage-sentinel` in the scope's directory under the `no_backup` directory, ties the key to the current state. It is written before a key is created. A key found without it, after an interrupted deletion or from any earlier state, is deleted before use and replaced only when a derivation needs one. Deletion removes the key, then the sentinel, and creates nothing, so `clearMeasurementData` deletes both and a new key appears only when linkage is next needed. Keystore keys are not backed up and the sentinel lives in the `no_backup` directory, so neither is restored to another installation. Calls run in arrival order on one worker thread with the same deadline and withdrawal rules as the record store, so a derivation abandoned before a deletion cannot recreate the key after it.
 
 ## Apple State Storage
 
@@ -177,7 +183,7 @@ The Apple backend of the `Records` port (`RecordStore.swift`) has the same seman
 
 ## Android Adapters
 
-The remaining facade callbacks that `Initialize`, TCP-01 and DNS-01 need have Android backends in plain Kotlin over the Android SDK; `BarometerBinding.newClient(context, store, trust)` wraps them in the facade interfaces with a `RecordStore` and creates the client. It registers a network callback and does nothing else; close the returned client before the store.
+The remaining facade callbacks that `Initialize`, TCP-01 and DNS-01 need have Android backends in plain Kotlin over the Android SDK; `BarometerBinding.newClient(context, store, trust)` wraps them in the facade interfaces with a `RecordStore` and, from API 23, the linkage key store of the same scope, and creates the client. It registers a network callback and a device-idle receiver and does nothing else; close the returned client before the store.
 
 | Port | Android source | Values |
 |---|---|---|
@@ -185,10 +191,21 @@ The remaining facade callbacks that `Initialize`, TCP-01 and DNS-01 need have An
 | `Consent` | None yet | Always `absent`, so a measurement that requires consent never runs |
 | `Device` | Sticky `ACTION_BATTERY_CHANGED` broadcast | Battery percentage and charging, each only when known |
 | `TimeZone` | `java.util.TimeZone.getDefault()` | IANA identifier |
-| `Network` | `ConnectivityManager` default network | Type `wifi`, `cellular`, `ethernet` or `other`; IPv4 and IPv6 `yes` or `no` from the link's address families; VPN, validation and captive portal `unknown`. The generation changes only when the default network or these values change |
+| `Network` | `ConnectivityManager` default network of the application, `PowerManager` device idle | Type `wifi`, `cellular`, `ethernet` or `other`; IPv4 and IPv6 `yes` or `no` from the link's address families; VPN, validation, captive portal and suspension as below. The generation changes only when the default network or any of these values change |
+| `LinkageKeyStore` | Android Keystore, API 23 and later | See [Android Linkage Keys](#android-linkage-keys) |
 | `SystemResolver` | `InetAddress.getAllByName` on a worker thread | Canonical addresses of the requested family; any failure, including an unknown name, is an error |
 
-No adapter reads an address, network name, operator, subscriber, account or device identifier into a value it returns. The linkage key store is not installed, so linkage is disabled. The trusted local document is read only from the application asset `barometer/trust.json` by `TrustDocument`; it is never taken from Dart. The method-channel host creates the client at `initialize` (see [Channel Contract](#channel-contract)). Validation evidence is in [docs/android-validation.md](docs/android-validation.md).
+The network signals come from the application's default network, so a VPN that excludes the application is not reported:
+
+| Value | API 23 and later | API 21 and 22 |
+|---|---|---|
+| VPN | `detected` with the VPN transport, otherwise `not_detected` | `detected` when the active network is a VPN, `not_detected` when no VPN network exists, otherwise `unknown` |
+| Validation, captive portal | `yes` or `no` from `NET_CAPABILITY_VALIDATED` and `NET_CAPABILITY_CAPTIVE_PORTAL` | `unknown` |
+| Suspension | `suspended` in device idle (Doze), from API 28 on a network without `NET_CAPABILITY_NOT_SUSPENDED` and from API 29 on a network reported blocked for the application; otherwise `active`, or `unknown` on API 29 and later until the blocked status is reported | `unknown` |
+
+Without a default network the VPN, validation and captive-portal values are `unknown`. Suspension means the operating system stops the application's network work; backgrounding alone is not suspension, because background work is the host's decision. An unknown suspension does not block a run.
+
+No adapter reads an address, network name, operator, subscriber, account or device identifier into a value it returns, and the access state carries no identifier. The trusted local document is read only from the application asset `barometer/trust.json` by `TrustDocument`; it is never taken from Dart. The method-channel host creates the client at `initialize` (see [Channel Contract](#channel-contract)). Validation evidence is in [docs/android-validation.md](docs/android-validation.md).
 
 ## Apple Adapters
 
@@ -203,7 +220,7 @@ The same callbacks have Apple backends in Swift over Foundation, UIKit and the N
 | `Network` | `NWPathMonitor` | Type `wifi`, `cellular`, `ethernet` or `other`; IPv4 and IPv6 `yes` or `no` from the path or, where the path does not report them, from the primary interface's non-link-local addresses; VPN, validation and captive portal `unknown`. The generation changes only when these values, the primary interface or the gateways change. CoreTelephony is not used |
 | `SystemResolver` | `getaddrinfo` on its own thread, at most four at once | Canonical addresses of the requested family; any failure, including an unknown name, is an error |
 
-As on Android, no adapter returns an address, network name, interface name, operator, subscriber, account or device identifier, the linkage key store is not installed, and the trusted local document is read only from the application bundle resource `barometer/trust.json` by `TrustDocument`. Validation evidence is in [docs/apple-validation.md](docs/apple-validation.md).
+As on Android, no adapter returns an address, network name, interface name, operator, subscriber, account or device identifier. Unlike Android, suspension is reported as `unknown` and the linkage key store is not installed, so linkage is disabled; and the trusted local document is read only from the application bundle resource `barometer/trust.json` by `TrustDocument`. Validation evidence is in [docs/apple-validation.md](docs/apple-validation.md).
 
 Known limitation: iOS has no public API that reports whether the clock is set automatically ("Set Automatically"), so manual time cannot be detected and the system wall clock is used as trusted time whenever it is positive. This is weaker than the Android adapter, which reports the clock unavailable unless automatic time is on. A user-set or otherwise wrong clock is therefore accepted, which leaves the residual risk of [a wrong or manipulated device clock](https://github.com/tv-rain/barometer-spec/blob/main/library/task-trust.md#residual-risks) named by the specification: expiry, key validity and retention decisions are made against that clock.
 
@@ -227,6 +244,14 @@ flutter build ios --debug --simulator
 cd android
 ./gradlew :barometer_flutter:testDebugUnitTest
 ./gradlew :barometer_flutter:connectedDebugAndroidTest   # needs a running emulator or device
+```
+
+The Android instrumented tests change the emulator's connectivity and power state through the shell (a test VPN, airplane mode from API 30, Wi-Fi, forced device idle) and restore it; run them on emulators only. On API 21, run them on a freshly started emulator: it remembers the VPN consent by package name, and a reinstalled test application gets a new user ID, for which it refuses to establish the VPN. Two scripts cover what the instrumentation cannot do itself:
+
+```sh
+bash scripts/android-airplane-check.sh            # airplane mode switched from the host, every API level
+bash scripts/android-clear-storage-check.sh       # "Clear storage" (pm clear) without calling Barometer
+bash scripts/android-clear-storage-check.sh --control   # the same without clearing; must fail
 ```
 
 The Swift store, adapter and channel XCTests run in `example/ios` on a simulator after the iOS simulator build, and a script checks the store's atomicity under process kill. CI does not run them. The channel tests contact no network. The adapter tests contact `1.1.1.1:443` and resolve `example.org` once each:

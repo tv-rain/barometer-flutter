@@ -62,6 +62,9 @@ internal class RecordStore private constructor(
     @Volatile
     private var closed = false
 
+    /** The scope's directory, which holds the records directory. */
+    val scopeDir: File get() = records.parentFile!!
+
     /** Clearing-class keys stored, read only on the worker thread. */
     private val markers = HashSet<String>()
 

@@ -1,3 +1,4 @@
+import java.security.MessageDigest
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 
@@ -61,11 +62,12 @@ flutter {
  * Writes the example's synthetic Barometer files from `example/barometer/` into the
  * generated assets as `barometer/trust.json` and `barometer/tasks/<name>.json`.
  *
- * The files carry placeholders that are filled at every build: `__EXPIRES_AT__` in the
- * trusted local document with the build time plus six days (the target registration
- * expiry) and `__BUILD_STAMP__` with the build time in Unix seconds (part of each task
- * identifier, so a rebuilt task never conflicts with a retained replay record). The tasks
- * are one-time embedded tasks without `not_after`.
+ * The files carry placeholders that are filled at every build: `__BUILD_STAMP__` with the
+ * build time in Unix seconds (part of each task identifier, so a rebuilt task never conflicts
+ * with a retained replay record), then, in the trusted local document, `__EXPIRES_AT__` with
+ * the build time plus six days (the target registration expiry) and `__TASK_SHA256_<name>__`
+ * with the SHA-256 digest of the written bytes of `tasks/<name>.json`, which lists that
+ * one-time embedded task without `not_after` as release-reviewed.
  */
 abstract class BarometerExampleAssets : DefaultTask() {
     @get:InputDirectory
@@ -85,12 +87,17 @@ abstract class BarometerExampleAssets : DefaultTask() {
         val root = source.get().asFile
         val target = output.get().asFile.resolve("barometer")
         target.deleteRecursively()
-        root.walkTopDown().filter { it.isFile && it.extension == "json" }.forEach { file ->
-            val text = file.readText()
-                .replace("__EXPIRES_AT__", expiresAt)
-                .replace("__BUILD_STAMP__", now.epochSecond.toString())
-            target.resolve(file.relativeTo(root)).apply { parentFile.mkdirs() }.writeText(text)
+        val digests = mutableMapOf<String, String>()
+        root.resolve("tasks").listFiles { f -> f.isFile && f.extension == "json" }!!.sorted().forEach { file ->
+            val bytes = file.readText().replace("__BUILD_STAMP__", now.epochSecond.toString()).toByteArray()
+            target.resolve("tasks/${file.name}").apply { parentFile.mkdirs() }.writeBytes(bytes)
+            digests["__TASK_SHA256_${file.nameWithoutExtension}__"] = MessageDigest.getInstance("SHA-256")
+                .digest(bytes).joinToString("") { "%02x".format(it) }
         }
+        var trust = root.resolve("trust.json").readText().replace("__EXPIRES_AT__", expiresAt)
+        digests.forEach { (placeholder, digest) -> trust = trust.replace(placeholder, digest) }
+        check(!trust.contains("__")) { "unfilled placeholder in trust.json" }
+        target.resolve("trust.json").writeText(trust)
     }
 }
 
