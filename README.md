@@ -195,7 +195,17 @@ A reinstall sentinel, the non-secret file `linkage-sentinel` in the scope's dire
 
 ## Apple State Storage
 
-The Apple backend of the `Records` port (`RecordStore.swift`) has the same semantics as the Android one: one file per record, temporary-file-and-rename writes, arrival-order calls on one serial queue bounded by `timeoutMillis`, withdrawal of calls still queued at their deadline or at close, refusal of other puts while a clearing marker is stored, one owner per scope (an in-process registry and a `flock` that also refuses other processes) and failure instead of blocking on the main thread. Records live under the application's own `Library/Application Support/barometer/<scope>/records`, never in a shared or app-group container, and the `barometer`, scope and records directories are marked `isExcludedFromBackup`, so they stay out of iCloud and device backups. Files keep the platform's default data-protection class. A key the store does not hold reaches the facade as `BarometermobileNewAbsentRecordValue()`, because Swift cannot return nil from the generated throwing `get`. Durability across power loss or a full disk, OS or device clearing and reinstallation are not yet validated.
+The Apple backend of the `Records` port (`RecordStore.swift`) has the same semantics as the Android one: one file per record, temporary-file-and-rename writes, arrival-order calls on one serial queue bounded by `timeoutMillis`, withdrawal of calls still queued at their deadline or at close, refusal of other puts while a clearing marker is stored, one owner per scope (an in-process registry and a `flock` that also refuses other processes) and failure instead of blocking on the main thread. Records live under the application's own `Library/Application Support/barometer/<scope>/records`, never in a shared or app-group container, and the `barometer`, scope and records directories are marked `isExcludedFromBackup`, so they stay out of iCloud and device backups. Files keep the platform's default data-protection class. A key the store does not hold reaches the facade as `BarometermobileNewAbsentRecordValue()`, because Swift cannot return nil from the generated throwing `get`. Uninstalling the application removes the container and the records with it; `scripts/ios-reinstall-check.sh` checks on a simulator that no record survives an uninstall and reinstall. Durability across power loss or a full disk and backup and restore are not yet validated.
+
+## Apple Linkage Keys
+
+The Apple backend of the `LinkageKeyStore` port (`AppleLinkageKeys.swift`) keeps one random 32-byte HMAC-SHA-256 key per storage scope as a Keychain generic password of the service `barometer-linkage` whose account is the scope name. The item is stored with `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`, so a run in the background can derive after the first unlock and the key never moves to another device through a backup, and with `kSecAttrSynchronizable` false, so iCloud Keychain does not copy it. No access group is named, so the item is in the application's default access group, which stays private to the application unless the host application shares its first keychain access group with other applications or extensions; a host that does so must not ship that configuration with Barometer. The Keychain cannot compute an HMAC with a stored secret, so the key is read into memory for each derivation and dropped afterwards. It is created on the first derivation; if it cannot be stored with these attributes the derivation fails and linkage with it, with no fallback to another store.
+
+Keychain items survive uninstalling the application, so a reinstall sentinel, the non-secret file `linkage-sentinel` in the scope's directory under Application Support, excluded from backup, ties the key to the current installation. It is written before a key is created. A key found without it, after a reinstall, a restored container or an interrupted deletion, is deleted before use and replaced only when a derivation needs one; a key that is missing, not 32 bytes, or stored with other attributes is replaced the same way. Deletion removes the key, then the sentinel, and creates nothing, so `clearMeasurementData` deletes both and a new key appears only when linkage is next needed. `BarometerBinding.newClient` installs the store for the record store's scope. Calls run in arrival order on one serial queue with the same deadline and withdrawal rules as the record store, so a derivation abandoned before a deletion cannot recreate the key after it. `scripts/ios-reinstall-check.sh` checks on a simulator that after uninstall and reinstall no record is present and the first derivation uses a new key although the earlier Keychain item survived.
+
+## Lifecycle on iOS
+
+The channel host wraps active runs in a `UIApplication` background task: the first `startRun` begins one, and it ends once no started run is still active as far as the host knows (a run leaves that set when `runState` reports it `terminal`, when it is cancelled, and when the client is cleared or closed). When the task's expiration handler runs, the operating system is about to suspend the application: the host reports suspension to the `Network` adapter, which ends an active attempt as `platform_suspended` through the access-generation watch, cancels every run it tracks, so the attempt is recorded as `cancelled_by_host` if the suspension did not end it first, and ends the task within two seconds. The next `startRun` begins a new task and reports the network active again. Backgrounding alone is not suspension, and a run started while the system grants no background time runs without a task. An engine detach closes the client, which cancels active runs within the lifecycle deadline and releases the scope.
 
 ## Android Adapters
 
@@ -245,7 +255,7 @@ The document's local restriction inputs apply on Android as in Go: `device` gate
 
 ## Apple Adapters
 
-The same callbacks have Apple backends in Swift over Foundation, UIKit and the Network framework; `BarometerBinding.newClient(store:trust:)` wraps them in the facade protocols with a `RecordStore` and creates the client. It starts an `NWPathMonitor` and does nothing else; close the returned client before the store. Facade calls must not be made on the main thread; the method-channel host creates the client at `initialize` and makes every facade call on its worker queue (see [Channel Contract](#channel-contract)).
+The same callbacks have Apple backends in Swift over Foundation, UIKit, the Network framework, Security and CryptoKit; `BarometerBinding.newClient(store:trust:)` wraps them in the facade protocols with a `RecordStore` and the linkage key store of the same scope, and creates the client. It starts an `NWPathMonitor` and does nothing else; close the returned client before the store. Facade calls must not be made on the main thread; the method-channel host creates the client at `initialize` and makes every facade call on its worker queue (see [Channel Contract](#channel-contract)).
 
 | Port | Apple source | Values |
 |---|---|---|
@@ -253,10 +263,17 @@ The same callbacks have Apple backends in Swift over Foundation, UIKit and the N
 | `Consent` | None yet | Always `absent`, so a measurement that requires consent never runs |
 | `Device` | `UIDevice` battery level and state, read on the main queue with battery monitoring turned on for the reading and then restored | Battery percentage and charging, each only when known; unknown if the main queue does not answer within the deadline |
 | `TimeZone` | `TimeZone.current` | IANA identifier |
-| `Network` | `NWPathMonitor` | Type `wifi`, `cellular`, `ethernet` or `other`; IPv4 and IPv6 `yes` or `no` from the path or, where the path does not report them, from the primary interface's non-link-local addresses; VPN, validation and captive portal `unknown`. The generation changes only when these values, the primary interface or the gateways change. CoreTelephony is not used |
+| `Network` | `NWPathMonitor`, the host's background-task expiry | Type `wifi`, `cellular`, `ethernet` or `other`; IPv4 and IPv6 `yes` or `no` from the path or, where the path does not report them, from the primary interface's non-link-local addresses; VPN, validation, captive portal and suspension as below. The generation changes only when these values, the primary interface or the gateways change. CoreTelephony is not used |
 | `SystemResolver` | `getaddrinfo` on its own thread, at most four at once | Canonical addresses of the requested family; any failure, including an unknown name, is an error |
+| `LinkageKeyStore` | Keychain and CryptoKit | See [Apple Linkage Keys](#apple-linkage-keys) |
 
-As on Android, no adapter returns an address, network name, interface name, operator, subscriber, account or device identifier. Unlike Android, suspension is reported as `unknown` and the linkage key store is not installed, so linkage is disabled; and the trusted local document is read only from the application bundle resource `barometer/trust.json` by `TrustDocument`. Validation evidence is in [docs/apple-validation.md](docs/apple-validation.md).
+| Signal | Value |
+|---|---|
+| VPN | `detected` when the primary interface of a satisfied path has the type `other`, which is how `NWPath` reports a tunnel interface; `not_detected` when it is Wi-Fi, cellular, wired Ethernet or loopback; `unknown` without a satisfied path. Only the interface type is read, so a tunnel that is not the default path (a split tunnel) is not detected |
+| Validation, captive portal | Always `unknown`: iOS has no public source. `NWPath` does not report validation, and the captive-network state is visible only to a hotspot helper with a restricted entitlement |
+| Suspension | `suspended` after a background task of an active run expired, until the next run starts; otherwise `active` (see [Lifecycle on iOS](#lifecycle-on-ios)) |
+
+As on Android, no adapter returns an address, network name, interface name, operator, subscriber, account or device identifier. Unlike Android, the trusted local document is read only from the application bundle resource `barometer/trust.json` by `TrustDocument`. Validation evidence is in [docs/apple-validation.md](docs/apple-validation.md).
 
 Known limitation: iOS has no public API that reports whether the clock is set automatically ("Set Automatically"), so manual time cannot be detected and the system wall clock is used as trusted time whenever it is positive. This is weaker than the Android adapter, which reports the clock unavailable unless automatic time is on. A user-set or otherwise wrong clock is therefore accepted, which leaves the residual risk of [a wrong or manipulated device clock](https://github.com/tv-rain/barometer-spec/blob/main/library/task-trust.md#residual-risks) named by the specification: expiry, key validity and retention decisions are made against that clock.
 
@@ -291,6 +308,13 @@ bash scripts/android-clear-storage-check.sh --control   # the same without clear
 bash scripts/android-reinstall-backup-check.sh reinstall [--control]   # uninstall and reinstall, API 23 and later
 bash scripts/android-reinstall-backup-check.sh adb-backup   # adb backup and restore; accepts the confirmation screen
 bash scripts/android-reinstall-backup-check.sh bmgr   # bmgr through the local transport, as root; exit 3 without one
+```
+
+On iOS the XCTests run from `example/ios` with `xcodebuild test -workspace Runner.xcworkspace -scheme Runner -destination 'platform=iOS Simulator,id=<udid>' -only-testing:RunnerTests` after `flutter build ios --debug --simulator`. Two scripts drive what a single test process cannot do, on simulators only:
+
+```sh
+bash scripts/ios-record-store-kill-test.sh <udid> [rounds]   # process kill during record writes
+bash scripts/ios-reinstall-check.sh <udid> [--control]       # uninstall and reinstall; the control must fail
 ```
 
 The Swift store, adapter and channel XCTests run in `example/ios` on a simulator after the iOS simulator build, and a script checks the store's atomicity under process kill. CI does not run them. The channel tests contact no network. The adapter tests contact `1.1.1.1:443` and resolve `example.org` once each:

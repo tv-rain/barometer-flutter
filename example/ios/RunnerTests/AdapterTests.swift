@@ -106,12 +106,15 @@ final class AdapterTests: XCTestCase {
     XCTAssertGreaterThanOrEqual(s.generation, 1)
     XCTAssertTrue(["wifi", "cellular", "ethernet", "other", "unknown"].contains(s.networkType))
     for v in [s.ipv4, s.ipv6] { XCTAssertTrue(["yes", "no", "unknown"].contains(v), v) }
-    XCTAssertEqual(s.vpn, "unknown")
+    XCTAssertTrue(["detected", "not_detected", "unknown"].contains(s.vpn), s.vpn)
     XCTAssertEqual(s.validated, "unknown")
     XCTAssertEqual(s.captivePortal, "unknown")
+    XCTAssertEqual(s.suspended, "active")
     // Every field is a fixed value; nothing else, such as an interface name, can be carried.
     let values = Mirror(reflecting: s).children.compactMap { $0.value as? String }
-    let allowed: Set<String> = ["wifi", "cellular", "ethernet", "other", "unknown", "yes", "no"]
+    let allowed: Set<String> = [
+      "wifi", "cellular", "ethernet", "other", "unknown", "yes", "no", "detected", "not_detected", "active",
+    ]
     XCTAssertTrue(Set(values).isSubset(of: allowed), "\(values)")
     network.close()
     XCTAssertThrowsError(try network.access(timeoutMillis: 100))
@@ -198,7 +201,7 @@ final class AdapterTests: XCTestCase {
   func testTrustDocumentFromTheBundleInitializes() throws {
     let trust = try TrustDocument.read(bundle: Bundle(for: Self.self))
     XCTAssertThrowsError(try TrustDocument.read(bundle: Bundle(for: Self.self), name: "missing"))
-    XCTAssertThrowsError(try TrustDocument.read(bundle: .main))
+    XCTAssertThrowsError(try TrustDocument.read(bundle: Bundle(for: XCTestCase.self)))
     offMain {
       let client = try self.newClient(trust)
       try client.initialize("{}")

@@ -22,9 +22,11 @@ enum BarometerBinding {
   /// Creates a facade client with the Apple adapters over `store` and the trusted local
   /// document `trust`, which must come from `TrustDocument`. It starts the network path monitor
   /// and performs no other work; nothing is measured until the lifecycle calls. The linkage key
-  /// store is not installed, so linkage is disabled.
+  /// store of the store's scope is installed (`AppleLinkageKeys`); it creates no key until linkage
+  /// needs one, and clearing deletes its key and sentinel.
   static func newClient(store: RecordStore, trust: Data) throws -> BarometerClient {
     let network = AppleNetwork()
+    let keys = AppleLinkageKeys(store)
     let adapters = BarometermobileAdapters()
     adapters.records = StoreRecords(store)
     adapters.clock = ClockCallback(AppleClock())
@@ -33,12 +35,14 @@ enum BarometerBinding {
     adapters.device = DeviceCallback(AppleDevice())
     adapters.timeZone = TimeZoneCallback(AppleTimeZone())
     adapters.resolver = ResolverCallback(AppleResolver())
+    adapters.linkageKeys = LinkageCallback(keys)
     var error: NSError?
     guard let facade = BarometermobileNewClient(adapters, trust, &error), error == nil else {
       network.close()
+      keys.close()
       throw BarometerError(error)
     }
-    return BarometerClient(facade: facade, network: network)
+    return BarometerClient(facade: facade, network: network, keys: keys)
   }
 }
 
@@ -52,20 +56,35 @@ struct BarometerError: Error, Equatable {
   }
 }
 
-/// A facade client and the adapter resources it owns. `close()` closes the client, then cancels
-/// the network monitor; close the record store after this.
+/// A facade client and the adapter resources it owns. `close()` closes the client, which cancels
+/// its active runs, then cancels the network monitor and stops the linkage key store; close the
+/// record store after this.
 final class BarometerClient {
   private let facade: BarometermobileClient
   private let network: AppleNetwork
+  private let keys: AppleLinkageKeys
 
-  fileprivate init(facade: BarometermobileClient, network: AppleNetwork) {
+  fileprivate init(facade: BarometermobileClient, network: AppleNetwork, keys: AppleLinkageKeys) {
     self.facade = facade
     self.network = network
+    self.keys = keys
   }
 
   func close() throws {
-    defer { network.close() }
+    defer {
+      network.close()
+      keys.close()
+    }
     try call { try facade.close() }
+  }
+
+  /// Reports to the network adapter whether the operating system is about to suspend the
+  /// application's work; see `AppleNetwork.setSuspended`.
+  func setSuspended(_ suspended: Bool) { network.setSuspended(suspended) }
+
+  /// The network adapter's current state, for tests.
+  func accessState(timeoutMillis: Int64) throws -> AccessSnapshot {
+    try network.access(timeoutMillis: timeoutMillis)
   }
 
   func initialize(_ configJSON: String) throws { try call { try facade.initialize(configJSON) } }
@@ -207,11 +226,10 @@ private final class NetworkCallback: NSObject, BarometermobileNetworkProtocol {
 
   func access(_ timeoutMillis: Int64) throws -> BarometermobileAccessState {
     let s = try network.access(timeoutMillis: timeoutMillis)
-    // Suspension is not reported on Apple platforms yet; unknown does not block execution.
     guard
       let state = BarometermobileNewAccessState(
         s.generation, s.networkType, s.vpn, s.ipv4, s.ipv6, s.validated, s.captivePortal,
-        "unknown")
+        s.suspended)
     else { throw AdapterUnavailableError() }
     return state
   }
@@ -267,5 +285,21 @@ private final class StoreRecords: NSObject, BarometermobileRecordsProtocol {
     guard let list = BarometermobileNewStringList() else { throw RecordStoreError() }
     for key in keys { list.add(key) }
     return list
+  }
+}
+
+private final class LinkageCallback: NSObject, BarometermobileLinkageKeyStoreProtocol {
+  private let keys: AppleLinkageKeys
+
+  init(_ keys: AppleLinkageKeys) {
+    self.keys = keys
+  }
+
+  func deriveHMACSHA256(_ message: Data?, timeoutMillis: Int64) throws -> Data {
+    try keys.deriveHmacSha256(message ?? Data(), timeoutMillis: timeoutMillis)
+  }
+
+  func delete(_ timeoutMillis: Int64) throws {
+    try keys.delete(timeoutMillis: timeoutMillis)
   }
 }
