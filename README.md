@@ -34,7 +34,7 @@ await client.close();
 | Call | Result | Facade call |
 |---|---|---|
 | `BarometerClient()` | | None: construction makes no channel call, loads no library and opens no storage |
-| `initialize(Map config)` | | Creates the record store and facade client if there is none, then `Initialize` with the configuration as JSON text |
+| `initialize(Map config)` | | Creates the record store and facade client if there is none, then `Initialize` with the configuration as JSON text. On Android it reads the trusted local document again and replaces the client when the document changed ([Android Host Policy](#android-host-policy)) |
 | `admitTask(TaskSource)` | `TaskHandle` | `InstallEmbeddedTask` or `InstallRemoteTask`, then `AdmitTask` |
 | `startRun(TaskHandle)` | `RunHandle` | `StartRun` |
 | `runState(RunHandle)` | `Map`: `{'state': 'active'}` or `{'state': 'terminal'}` | `RunState` |
@@ -59,7 +59,8 @@ A failure throws `BarometerException(code)`. The code is the facade's code strin
 | Code | Raised when |
 |---|---|
 | `not_initialized` | A call other than `initialize` or `close` is made while no native client exists |
-| `trust_invalid` | `initialize` cannot read the trusted local document `barometer/trust.json` from the Android assets or the iOS application bundle, or the facade rejects it |
+| `trust_invalid` | `initialize` cannot read the trusted local document from the Android asset the host registered (by default `barometer/trust.json`) or from `barometer/trust.json` in the iOS application bundle, or the facade rejects it |
+| `policy_rejected` | Android only: `initialize` finds a trusted local document that differs from the active one, or from the last one activated in the process, without a strictly greater `policy_generation` ([Android Host Policy](#android-host-policy)) |
 | `storage_unavailable` | `initialize` cannot open the record store, for example because another owner holds it, or `close` cannot close it |
 | `delivery_unavailable` | The embedded task file is missing, unreadable, empty or larger than 131,072 bytes, or the document names no unique embedded issuer |
 | `client_closed` | A call arrives after the Flutter engine detached the plugin |
@@ -205,7 +206,27 @@ The network signals come from the application's default network, so a VPN that e
 
 Without a default network the VPN, validation and captive-portal values are `unknown`. Suspension means the operating system stops the application's network work; backgrounding alone is not suspension, because background work is the host's decision. An unknown suspension does not block a run.
 
-No adapter reads an address, network name, operator, subscriber, account or device identifier into a value it returns, and the access state carries no identifier. The trusted local document is read only from the application asset `barometer/trust.json` by `TrustDocument`; it is never taken from Dart. The method-channel host creates the client at `initialize` (see [Channel Contract](#channel-contract)). Validation evidence is in [docs/android-validation.md](docs/android-validation.md).
+No adapter reads an address, network name, operator, subscriber, account or device identifier into a value it returns, and the access state carries no identifier. The trusted local document reaches the client only through the host policy adapter below; it is never taken from Dart. The method-channel host creates the client at `initialize` (see [Channel Contract](#channel-contract)). Validation evidence is in [docs/android-validation.md](docs/android-validation.md).
+
+## Android Host Policy
+
+The host policy adapter (`HostPolicy.kt`) is the only source of the trusted local document on Android. It reads the application asset that the host registers from its own native code, before the engine registers the plugin, for example in `Application.onCreate`:
+
+```kotlin
+BarometerFlutterPlugin.setTrustAsset("barometer/trust.json") // the default
+```
+
+The path is relative to the application's assets and made of plain segments; anything else throws `IllegalArgumentException`. The asset ships in the application package, so the release signature authenticates it. Dart, channel arguments, tasks, collector replies, targets, proxies and context endpoints cannot supply or change it.
+
+Every `initialize` reads the document again:
+
+- The same bytes as the active document: nothing is replaced, and `initialize` returns `already_initialized` as before.
+- Different bytes: a policy replacement, activated only by reinitialization. The document's `policy_generation` must be strictly greater than every generation activated in the process; a lower or equal one fails with `policy_rejected`. The facade then validates the document in full while the active client stays open; an invalid one fails with `trust_invalid`. Either failure leaves the active policy, its runs, handles and deliveries in place. Only then is the active client closed, which cancels its runs (recorded as `cancelled_by_host`) and invalidates its task and run handles and delivery records, and a new client over the same record store is initialized with this call's configuration. Tasks are admitted again through `admitTask`; one the new policy no longer permits is rejected there, for a removed registration as `target_not_registered`. If closing fails, the new client is discarded and the active one is kept so that `close` can be retried.
+- With no client open, after `close` or in another engine of the process, the document must be the last one activated or have a greater generation.
+
+The generation floor is kept in memory for the life of the process. It is not persisted: across releases, Android refuses to install a lower version code over an installed application, and Go rejects admission under a generation below the highest one of its retained replay records as `policy_rollback`. A debuggable build installed with a downgrade flag, or an application whose data was cleared, can start from an earlier packaged document.
+
+The document's local restriction inputs apply on Android as in Go: `device` gates runs on the battery state the `Device` adapter reads (a run that does not meet it returns `run_not_due`), and `network_context` limits Network Context acquisition to the paths and configured endpoints it lists. `setProxy` and `clearProxy` return `proxy_rejected` for a configuration the trusted document does not approve or the facade cannot validate, leaving the previous proxy in place, and `cleanup_incomplete` when the previous proxy's work does not end within the cleanup bound, after which the client is blocked until `close`. Keep the previous local proxy available until `setProxy` or `clearProxy` returns. Signed remote packages are verified by the native library against the Ed25519 issuer keys of the active policy; the plugin holds no key. iOS still reads the fixed bundle resource and does not replace the policy.
 
 ## Apple Adapters
 
@@ -246,7 +267,7 @@ cd android
 ./gradlew :barometer_flutter:connectedDebugAndroidTest   # needs a running emulator or device
 ```
 
-The Android instrumented tests change the emulator's connectivity and power state through the shell (a test VPN, airplane mode from API 30, Wi-Fi, forced device idle) and restore it; run them on emulators only. On API 21, run them on a freshly started emulator: it remembers the VPN consent by package name, and a reinstalled test application gets a new user ID, for which it refuses to establish the VPN. Two scripts cover what the instrumentation cannot do itself:
+The Android instrumented tests change the emulator's connectivity and power state through the shell (a test VPN, airplane mode from API 30, Wi-Fi, forced device idle, the reported battery level and charging state) and restore it; run them on emulators only. On API 21, run them on a freshly started emulator: it remembers the VPN consent by package name, and a reinstalled test application gets a new user ID, for which it refuses to establish the VPN. Two scripts cover what the instrumentation cannot do itself:
 
 ```sh
 bash scripts/android-airplane-check.sh            # airplane mode switched from the host, every API level

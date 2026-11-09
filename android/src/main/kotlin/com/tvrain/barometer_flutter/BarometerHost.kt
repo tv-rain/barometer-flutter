@@ -12,16 +12,27 @@ import java.util.concurrent.TimeUnit
  * Owns the native client of one Flutter engine and runs the channel calls against it.
  *
  * Nothing happens at construction: the worker threads start with the first call, and the
- * record store and facade client are created by `initialize`, which reads the trusted local
- * document from the application package. `close` closes the client, then the store. Every
- * facade call runs on a worker thread, never on the UI thread, and its answer is posted back
- * to the main looper.
+ * record store and facade client are created by `initialize`, which takes the trusted local
+ * document from the host policy adapter [policy]. `close` closes the client, then the store.
+ * Every facade call runs on a worker thread, never on the UI thread, and its answer is posted
+ * back to the main looper.
+ *
+ * Every `initialize` reads the document again. When it differs from the active one, the call
+ * is a policy replacement by reinitialization: [HostPolicy.check] must accept its generation
+ * and the facade must accept the document while the active client stays open and untouched;
+ * then the active client is closed, which cancels its runs and invalidates its task and run
+ * handles and embedded deliveries, and a new client over the same record store is
+ * initialized. If closing fails, the new client is discarded and the active one is kept so
+ * that `close` can be retried.
  *
  * A failed `initialize` keeps the client it created, so the host can retry it or recover with
  * `clearMeasurementData` after `clearing_incomplete`. A `close` that fails keeps the client
  * too, so it can be retried.
  */
-internal class BarometerHost(private val context: Context) {
+internal class BarometerHost(
+    private val context: Context,
+    private val policy: HostPolicy = BarometerFlutterPlugin.hostPolicy(context),
+) {
     /** A call's outcome, delivered on the main looper. */
     interface Reply {
         fun success(value: Any?)
@@ -34,6 +45,7 @@ internal class BarometerHost(private val context: Context) {
     private var detached = false
     private var store: RecordStore? = null
     private var client: BarometerClient? = null
+    private var active: HostPolicy.Document? = null
     private var embeddedIssuer: String? = null
 
     /** Parses and dispatches one channel call; returns false for an unknown method. */
@@ -126,28 +138,52 @@ internal class BarometerHost(private val context: Context) {
         }
     }
 
-    /** Returns the client, creating the store and client on first use. */
+    /**
+     * Returns the client for the current trusted local document: the open client when the
+     * document is unchanged, otherwise a new client that replaces it, creating the store on
+     * first use.
+     */
     private fun openClient(): BarometerClient = synchronized(lock) {
-        client?.let { return it }
-        val trust = try {
-            TrustDocument.read(context.assets)
-        } catch (e: AdapterUnavailableException) {
-            throw CodeException(ERR_TRUST)
+        val document = try {
+            policy.read()
+        } catch (e: PolicyException) {
+            throw CodeException(e.message ?: ERR_TRUST)
         }
-        val records = try {
+        val current = client
+        val previous = active
+        if (current != null && previous != null && document.sameAs(previous)) return current
+        try {
+            policy.check(document, if (current != null) previous else null)
+        } catch (e: PolicyException) {
+            throw CodeException(e.message ?: ERR_POLICY)
+        }
+        // A replacement keeps the open client's record store.
+        val opened = store.takeIf { current != null }
+        val records = opened ?: try {
             RecordStore.open(context)
         } catch (e: RecordStoreException) {
             throw CodeException(ERR_STORAGE)
         }
         val created = try {
-            BarometerBinding.newClient(context, records, trust)
+            BarometerBinding.newClient(context, records, document.bytes)
         } catch (e: Exception) {
-            runCatching { records.close() }
+            if (opened == null) runCatching { records.close() }
             throw e
+        }
+        if (current != null) {
+            // The facade accepted the document: only now is the active client given up.
+            try {
+                current.close()
+            } catch (e: Exception) {
+                runCatching { created.close() }
+                throw e
+            }
         }
         store = records
         client = created
-        embeddedIssuer = TrustDocument.embeddedIssuer(trust)
+        active = document
+        embeddedIssuer = TrustDocument.embeddedIssuer(document.bytes)
+        policy.activated(document)
         created
     }
 
@@ -155,6 +191,7 @@ internal class BarometerHost(private val context: Context) {
     private fun closeClient() = synchronized(lock) {
         client?.close()
         client = null
+        active = null
         embeddedIssuer = null
         try {
             store?.close()
@@ -175,7 +212,8 @@ internal class BarometerHost(private val context: Context) {
         private const val ERR_CLOSED = "client_closed"
         private const val ERR_NOT_INITIALIZED = "not_initialized"
         private const val ERR_DELIVERY = "delivery_unavailable"
-        private const val ERR_TRUST = "trust_invalid"
+        private const val ERR_TRUST = HostPolicy.TRUST_INVALID
+        private const val ERR_POLICY = HostPolicy.POLICY_REJECTED
         private const val ERR_STORAGE = "storage_unavailable"
 
         private val CODE = Regex("[a-z][a-z0-9_]{0,63}")

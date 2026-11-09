@@ -23,4 +23,27 @@ internal object DeviceShell {
         }
         return condition()
     }
+
+    /**
+     * Waits until the access network has kept one generation for [quietSeconds], at most
+     * [seconds], so an attempt that must stay active is not ended by `network_changed` while an
+     * earlier test's connectivity change settles.
+     */
+    fun awaitSettledNetwork(context: android.content.Context, quietSeconds: Long = 5, seconds: Long = 60) {
+        AndroidNetwork(context.applicationContext).use { network ->
+            val deadline = System.nanoTime() + seconds * 1_000_000_000L
+            var last = network.access().generation
+            var since = System.nanoTime()
+            while (System.nanoTime() < deadline) {
+                Thread.sleep(200)
+                val now = network.access().generation
+                if (now != last) {
+                    last = now
+                    since = System.nanoTime()
+                } else if (System.nanoTime() - since >= quietSeconds * 1_000_000_000L) {
+                    return
+                }
+            }
+        }
+    }
 }
