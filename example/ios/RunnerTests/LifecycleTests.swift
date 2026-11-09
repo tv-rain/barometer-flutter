@@ -171,7 +171,7 @@ final class LifecycleTests: XCTestCase {
       ])
     let storesBase = base.appendingPathComponent("stores", isDirectory: true)
     let made = BarometerHost(
-      bundle: bundle,
+      bundle: bundle, policy: HostPolicy(bundle: bundle),
       openStore: { try RecordStore.open(base: storesBase, scope: Self.scope, isMainThread: { Thread.isMainThread }) },
       background: background)
     host = made

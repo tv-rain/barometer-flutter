@@ -34,7 +34,7 @@ await client.close();
 | Call | Result | Facade call |
 |---|---|---|
 | `BarometerClient()` | | None: construction makes no channel call, loads no library and opens no storage |
-| `initialize(Map config)` | | Creates the record store and facade client if there is none, then `Initialize` with the configuration as JSON text. On Android it reads the trusted local document again and replaces the client when the document changed ([Android Host Policy](#android-host-policy)) |
+| `initialize(Map config)` | | Creates the record store and facade client if there is none, then `Initialize` with the configuration as JSON text. It reads the trusted local document again and replaces the client when the document changed ([Android Host Policy](#android-host-policy), [Apple Host Policy](#apple-host-policy)) |
 | `admitTask(TaskSource)` | `TaskHandle` | `InstallEmbeddedTask` or `InstallRemoteTask`, then `AdmitTask` |
 | `startRun(TaskHandle)` | `RunHandle` | `StartRun` |
 | `runState(RunHandle)` | `Map`: `{'state': 'active'}` or `{'state': 'terminal'}` | `RunState` |
@@ -60,7 +60,7 @@ A failure throws `BarometerException(code)`. The code is the facade's code strin
 |---|---|
 | `not_initialized` | A call other than `initialize` or `close` is made while no native client exists |
 | `trust_invalid` | `initialize` cannot read the trusted local document from the Android asset the host registered (by default `barometer/trust.json`) or from `barometer/trust.json` in the iOS application bundle, or the facade rejects it |
-| `policy_rejected` | Android only: `initialize` finds a trusted local document that differs from the active one, or from the last one activated in the process, without a strictly greater `policy_generation` ([Android Host Policy](#android-host-policy)) |
+| `policy_rejected` | `initialize` finds a trusted local document that differs from the active one, or from the last one activated in the process, without a strictly greater `policy_generation` ([Android Host Policy](#android-host-policy), [Apple Host Policy](#apple-host-policy)) |
 | `storage_unavailable` | `initialize` cannot open the record store, for example because another owner holds it, or `close` cannot close it |
 | `delivery_unavailable` | The embedded task file is missing, unreadable, empty or larger than 131,072 bytes, or the document names no unique embedded issuer |
 | `client_closed` | A call arrives after the Flutter engine detached the plugin |
@@ -251,7 +251,7 @@ Every `initialize` reads the document again:
 
 The generation floor is kept in memory for the life of the process. It is not persisted: across releases, Android refuses to install a lower version code over an installed application, and Go rejects admission under a generation below the highest one of its retained replay records as `policy_rollback`. A debuggable build installed with a downgrade flag, or an application whose data was cleared, can start from an earlier packaged document.
 
-The document's local restriction inputs apply on Android as in Go: `device` gates runs on the battery state the `Device` adapter reads (a run that does not meet it returns `run_not_due`), and `network_context` limits Network Context acquisition to the paths and configured endpoints it lists. `setProxy` and `clearProxy` return `proxy_rejected` for a configuration the trusted document does not approve or the facade cannot validate, leaving the previous proxy in place, and `cleanup_incomplete` when the previous proxy's work does not end within the cleanup bound, after which the client is blocked until `close`. Keep the previous local proxy available until `setProxy` or `clearProxy` returns. Signed remote packages are verified by the native library against the Ed25519 issuer keys of the active policy; the plugin holds no key. iOS still reads the fixed bundle resource and does not replace the policy.
+The document's local restriction inputs apply on Android as in Go: `device` gates runs on the battery state the `Device` adapter reads (a run that does not meet it returns `run_not_due`), and `network_context` limits Network Context acquisition to the paths and configured endpoints it lists. `setProxy` and `clearProxy` return `proxy_rejected` for a configuration the trusted document does not approve or the facade cannot validate, leaving the previous proxy in place, and `cleanup_incomplete` when the previous proxy's work does not end within the cleanup bound, after which the client is blocked until `close`. Keep the previous local proxy available until `setProxy` or `clearProxy` returns. Signed remote packages are verified by the native library against the Ed25519 issuer keys of the active policy; the plugin holds no key. iOS follows the same rules ([Apple Host Policy](#apple-host-policy)).
 
 ## Apple Adapters
 
@@ -261,7 +261,7 @@ The same callbacks have Apple backends in Swift over Foundation, UIKit, the Netw
 |---|---|---|
 | `Clock` | `Date()` (`CLOCK_REALTIME`) | Used as trusted time when positive; a time that is not positive is unavailable, with no fallback. Manual time cannot be detected (see below) |
 | `Consent` | None yet | Always `absent`, so a measurement that requires consent never runs |
-| `Device` | `UIDevice` battery level and state, read on the main queue with battery monitoring turned on for the reading and then restored | Battery percentage and charging, each only when known; unknown if the main queue does not answer within the deadline |
+| `Device` | `UIDevice` battery level and state, read on the main queue with battery monitoring turned on for the reading and then restored | Battery percentage and charging, each only when known; unknown if the main queue does not answer within the deadline. The simulator reports both as unknown |
 | `TimeZone` | `TimeZone.current` | IANA identifier |
 | `Network` | `NWPathMonitor`, the host's background-task expiry | Type `wifi`, `cellular`, `ethernet` or `other`; IPv4 and IPv6 `yes` or `no` from the path or, where the path does not report them, from the primary interface's non-link-local addresses; VPN, validation, captive portal and suspension as below. The generation changes only when these values, the primary interface or the gateways change. CoreTelephony is not used |
 | `SystemResolver` | `getaddrinfo` on its own thread, at most four at once | Canonical addresses of the requested family; any failure, including an unknown name, is an error |
@@ -273,9 +273,23 @@ The same callbacks have Apple backends in Swift over Foundation, UIKit, the Netw
 | Validation, captive portal | Always `unknown`: iOS has no public source. `NWPath` does not report validation, and the captive-network state is visible only to a hotspot helper with a restricted entitlement |
 | Suspension | `suspended` after a background task of an active run expired, until the next run starts; otherwise `active` (see [Lifecycle on iOS](#lifecycle-on-ios)) |
 
-As on Android, no adapter returns an address, network name, interface name, operator, subscriber, account or device identifier. Unlike Android, the trusted local document is read only from the application bundle resource `barometer/trust.json` by `TrustDocument`. Validation evidence is in [docs/apple-validation.md](docs/apple-validation.md).
+As on Android, no adapter returns an address, network name, interface name, operator, subscriber, account or device identifier. The trusted local document reaches the client only through the host policy adapter below; it is never taken from Dart. Validation evidence is in [docs/apple-validation.md](docs/apple-validation.md).
 
 Known limitation: iOS has no public API that reports whether the clock is set automatically ("Set Automatically"), so manual time cannot be detected and the system wall clock is used as trusted time whenever it is positive. This is weaker than the Android adapter, which reports the clock unavailable unless automatic time is on. A user-set or otherwise wrong clock is therefore accepted, which leaves the residual risk of [a wrong or manipulated device clock](https://github.com/tv-rain/barometer-spec/blob/main/library/task-trust.md#residual-risks) named by the specification: expiry, key validity and retention decisions are made against that clock.
+
+## Apple Host Policy
+
+The host policy adapter (`HostPolicy.swift`) is the only source of the trusted local document on iOS. It reads the resource `barometer/trust.json` of the application bundle, which the host packages with its release (a `barometer` folder reference in the Runner target); the name is fixed in the plugin's native code, so Dart cannot choose another document, and the application's code signature covers it. Dart, channel arguments, tasks, collector replies, targets, proxies and context endpoints cannot supply or change it. One adapter serves every engine of the process.
+
+Every `initialize` reads the document again, with the same rules as on Android:
+
+- The same bytes as the active document: nothing is replaced, and `initialize` returns `already_initialized` as before.
+- Different bytes: a policy replacement, activated only by reinitialization. The document's `policy_generation` must be strictly greater than every generation activated in the process; a lower or equal one fails with `policy_rejected`. The facade then validates the document in full while the active client stays open; an invalid one fails with `trust_invalid`. Either failure leaves the active policy, its runs, handles and deliveries in place. Only then is the active client closed, which cancels its runs (recorded as `cancelled_by_host`), ends the background task that held them and invalidates its task and run handles and delivery records, and a new client over the same record store is initialized with this call's configuration. Tasks are admitted again through `admitTask`; one the new policy no longer permits is rejected there, for a removed registration as `target_not_registered`. If closing fails, the new client is discarded and the active one is kept so that `close` can be retried.
+- With no client open, after `close` or in another engine of the process, the document must be the last one activated or have a greater generation.
+
+The generation floor is kept in memory for the life of the process and is not persisted. An application bundle does not change while its process runs, so on iOS a different document arrives only with another build of the application, in a new process; across releases the App Store does not install an earlier version over a later one, and Go rejects admission under a generation below the highest one of its retained replay records as `policy_rollback`. A development or TestFlight build installed over a later one, or an application whose container was removed, can start from an earlier packaged document.
+
+The document's local restriction inputs apply on iOS as in Go: `release_reviewed_tasks` alone enables the embedded one-time exception, for the embedded tasks it lists by issuer and exact-bytes digest; `device` gates runs on the battery state the `Device` adapter reads (a run that does not meet it returns `run_not_due`; an unknown state, as on the simulator, never meets it); and `network_context` limits Network Context acquisition to the paths and configured endpoints it lists. `setProxy` and `clearProxy` return `proxy_rejected` for a configuration the trusted document does not approve or the facade cannot validate, leaving the previous proxy in place, and `cleanup_incomplete` when the previous proxy's work does not end within the cleanup bound, after which the client is blocked until `close`. Keep the previous local proxy available until `setProxy` or `clearProxy` returns. Signed remote packages are verified by the native library against the Ed25519 issuer keys of the active policy; the plugin holds no key.
 
 ## Build and Validate
 
@@ -317,7 +331,7 @@ bash scripts/ios-record-store-kill-test.sh <udid> [rounds]   # process kill duri
 bash scripts/ios-reinstall-check.sh <udid> [--control]       # uninstall and reinstall; the control must fail
 ```
 
-The Swift store, adapter and channel XCTests run in `example/ios` on a simulator after the iOS simulator build, and a script checks the store's atomicity under process kill. CI does not run them. The channel tests contact no network. The adapter tests contact `1.1.1.1:443` and resolve `example.org` once each:
+The Swift store, adapter, channel, host policy, proxy and remote task XCTests run in `example/ios` on a simulator after the iOS simulator build, and a script checks the store's atomicity under process kill. CI does not run them. The channel, host policy, proxy and remote task tests contact no network: their tasks run only on the proxy path through loopback proxies in the test process, which never open a connection onward. The adapter tests contact `1.1.1.1:443` and resolve `example.org` once each:
 
 ```sh
 cd example/ios
