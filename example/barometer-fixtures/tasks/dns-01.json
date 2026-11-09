@@ -1,0 +1,32 @@
+{
+  "schema_version": "0.1.0",
+  "task_id": "fixture-dns-01-__BUILD_STAMP__",
+  "test_id": "DNS-01",
+  "test_version": "0.1.0",
+  "input": {
+    "hostname": "example.org",
+    "record_type": "A",
+    "resolver": {
+      "ip_address": "8.8.8.8"
+    }
+  },
+  "options": {
+    "resolver_mode": "direct",
+    "transport": "udp"
+  },
+  "schedule": {
+    "repeat": {
+      "mode": "none"
+    },
+    "limits": {
+      "max_runs": 1
+    }
+  },
+  "execution": {
+    "limits": {}
+  },
+  "safety": {
+    "risk_level": "low",
+    "requires_user_consent": false
+  }
+}

@@ -1,0 +1,77 @@
+{
+  "schema_version": "0.1.0",
+  "task_id": "fixture-net-05-__BUILD_STAMP__",
+  "test_id": "NET-05",
+  "test_version": "0.1.0",
+  "input": {
+    "profile": {
+      "profile_id": "fixture",
+      "profile_version": 1,
+      "steps": [
+        {
+          "step_id": "dns",
+          "test_id": "DNS-01",
+          "test_version": "0.1.0",
+          "input": {
+            "hostname": "example.org",
+            "record_type": "A",
+            "resolver": {
+              "ip_address": "8.8.8.8"
+            }
+          },
+          "options": {
+            "resolver_mode": "direct",
+            "transport": "tcp"
+          }
+        },
+        {
+          "step_id": "tcp",
+          "test_id": "TCP-01",
+          "test_version": "0.1.0",
+          "input": {
+            "ip_address": "8.8.8.8",
+            "port": 443
+          },
+          "options": {}
+        },
+        {
+          "step_id": "tls",
+          "test_id": "TLS-01",
+          "test_version": "0.1.0",
+          "input": {
+            "ip_address": "8.8.8.8",
+            "port": 443,
+            "server_name": "fixture.example.org"
+          },
+          "options": {}
+        },
+        {
+          "step_id": "http",
+          "test_id": "HTTP-01",
+          "test_version": "0.1.0",
+          "input": {
+            "url": "https://8.8.8.8/fixture",
+            "expected_status": 200
+          },
+          "options": {}
+        }
+      ]
+    }
+  },
+  "options": {},
+  "schedule": {
+    "repeat": {
+      "mode": "none"
+    },
+    "limits": {
+      "max_runs": 1
+    }
+  },
+  "execution": {
+    "limits": {}
+  },
+  "safety": {
+    "risk_level": "low",
+    "requires_user_consent": false
+  }
+}

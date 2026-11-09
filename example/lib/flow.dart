@@ -12,6 +12,7 @@ class FlowReport {
     required this.observationTypes,
     required this.platform,
     required this.pendingAfterAcknowledge,
+    required this.outcome,
   });
 
   /// How many `runState` calls returned before the run was terminal.
@@ -31,6 +32,11 @@ class FlowReport {
 
   /// Whether another bundle was still pending after the acknowledgement.
   final bool pendingAfterAcknowledge;
+
+  /// The `measurement.outcome` of the first result. The example never shows
+  /// it; the measurement integration test checks it against the synthetic
+  /// fixtures.
+  final String outcome;
 
   @override
   String toString() =>
@@ -108,5 +114,6 @@ Future<FlowReport> runEmbeddedTask(
     ],
     platform: '${implementation?['platform']}',
     pendingAfterAcknowledge: pending != null,
+    outcome: '${measurement?['outcome']}',
   );
 }
