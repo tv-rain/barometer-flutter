@@ -65,6 +65,12 @@ final class RecordStore {
     self.isMainThread = isMainThread
   }
 
+  /// The scope's directory, which also holds the linkage key's reinstall sentinel.
+  var scopeDirectory: URL { URL(fileURLWithPath: ownerKey, isDirectory: true) }
+
+  /// The scope's name.
+  var scope: String { scopeDirectory.lastPathComponent }
+
   /// Returns a copy of the value stored for `key`, or nil when none is stored.
   func get(_ key: String, timeoutMillis: Int64) throws -> Data? {
     _ = try Self.checkKey(key)
@@ -323,8 +329,9 @@ final class RecordStore {
   }
 }
 
-/// One call handed to the queue. It runs at most once, and not at all once withdrawn.
-private final class Call<T> {
+/// One call handed to a serial queue. It runs at most once, and not at all once withdrawn.
+/// `RecordStore` and `AppleLinkageKeys` use it.
+final class Call<T> {
   private let lock = NSLock()
   private let done = DispatchSemaphore(value: 0)
   private var started = false
