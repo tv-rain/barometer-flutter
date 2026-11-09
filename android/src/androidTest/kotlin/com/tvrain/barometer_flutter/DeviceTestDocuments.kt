@@ -10,6 +10,9 @@ import org.json.JSONObject
 internal object DeviceTestDocuments {
     const val ISSUER = "embedded-issuer"
 
+    /** The issuer of signed remote tasks, added by [withRemoteIssuer]. */
+    const val REMOTE_ISSUER = "remote-issuer"
+
     /** The connection code approved for the loopback proxies of the tests. */
     const val CONNECTION_CODE = "synthetic_proxy"
 
@@ -95,5 +98,28 @@ internal object DeviceTestDocuments {
                 .put("classification_versions", JSONArray()).put("country_codes", JSONArray())
                 .put("region_codes", JSONArray()))
             .toString().toByteArray()
+    }
+
+    /** [document] with [change] applied to its parsed form. */
+    fun edit(document: ByteArray, change: (JSONObject) -> Unit): ByteArray {
+        val root = JSONObject(String(document))
+        change(root)
+        return root.toString().toByteArray()
+    }
+
+    /** [document] with policy generation [generation]. */
+    fun withGeneration(document: ByteArray, generation: Long): ByteArray =
+        edit(document) { it.getJSONObject("policy").put("generation", generation) }
+
+    /**
+     * [document] with [REMOTE_ISSUER], permitted like the embedded issuer, and the trusted
+     * [keys]. The embedded issuer stays the only issuer without a key.
+     */
+    fun withRemoteIssuer(document: ByteArray, vararg keys: JSONObject): ByteArray = edit(document) { root ->
+        val policy = root.getJSONObject("policy")
+        val issuers = policy.getJSONArray("issuers")
+        val permissions = JSONObject(issuers.getJSONObject(0).getJSONObject("permissions").toString())
+        issuers.put(JSONObject().put("issuer_id", REMOTE_ISSUER).put("permissions", permissions))
+        keys.forEach { policy.getJSONArray("keys").put(it) }
     }
 }
