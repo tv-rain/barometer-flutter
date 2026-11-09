@@ -11,7 +11,7 @@ The `Barometer.aar.build-info.txt` written by `scripts/build-native.sh android` 
 ```text
 artifact: Barometer.aar
 targets: android/arm64,android/amd64
-commit: c49695c9406d64d34d247de827ae2b0343634640
+commit: d7a5440ef35accc89a16a3074c586fa3d9f0308a
 go: go1.26.0
 gomobile: v0.0.0-20260821190718-4776eadac327
 ndk: 29.0.14206865
@@ -23,18 +23,43 @@ slices:
 status: compiled only; not a release, not platform support
 ```
 
-The API 35 row and the trust-store probes below were recorded with a library built at the earlier pin `52789565c85f9d14d7b2ce1d5e42f85b11cea753`, whose build-info differs from the one above only in the `commit` line.
+The sections after [Trust Roots Inside the Application](#trust-roots-inside-the-application) were recorded with libraries built at the earlier pins `c49695c9406d64d34d247de827ae2b0343634640` and, where they say so, `52789565c85f9d14d7b2ce1d5e42f85b11cea753`, whose build-info differs from the one above only in the `commit` line.
 
 ## Instrumented Tests at the Current Pin
 
-Run on 2026-11-05 from `example/android` with `./gradlew :barometer_flutter:connectedDebugAndroidTest` after a clean build, with the library above. The `arm64-v8a` `libgojni.so` packaged in the test APK is byte-identical to the one in the built AAR after `llvm-strip --strip-unneeded`, which is what the Android Gradle plugin applies. The tests are `AdapterDeviceTest` (6 tests) and `RecordStoreDeviceTest` (7 tests), described below. No test or glue code changed for this run, and the trust-store probe was not repeated.
+Run on 2026-11-09 from `example/android` with `./gradlew :barometer_flutter:connectedDebugAndroidTest` and the library above, built locally by `scripts/build-native.sh android`. The tests are `AdapterDeviceTest` (6 tests), `RecordStoreDeviceTest` (7), `ChannelDeviceTest` (4), described below, and `TrustRootDeviceTest` (1) in its default `platform` scenario, described in the next section.
 
 | Target | Model | OS | ABI | Instrumented tests |
 |---|---|---|---|---|
-| Emulator, `system-images;android-21;default;arm64-v8a` | Android SDK built for arm64 | Android 5.0.2 (API 21) | `arm64-v8a` | 13 of 13 passed |
-| Emulator, `system-images;android-24;default;arm64-v8a` | Android SDK built for arm64 | Android 7.0 (API 24) | `arm64-v8a` | 13 of 13 passed |
+| Emulator, `system-images;android-24;default;arm64-v8a` | Android SDK built for arm64 | Android 7.0 (API 24) | `arm64-v8a` | 18 of 18 passed |
+| Emulator, `system-images;android-35;default;arm64-v8a` | Android SDK built for arm64 | Android 15 (API 35) | `arm64-v8a` | 18 of 18 passed |
 
-As before, these runs use the plugin's own test APK, not a Flutter application.
+The API 21 emulator did not run at this pin; its last run is the 17-test row of [Method Channel](#method-channel). These runs use the plugin's own test APK, not a Flutter application.
+
+## Trust Roots Inside the Application
+
+The library uses the Android trust-root set of [decision 0016](https://github.com/tv-rain/barometer/blob/main/docs/decisions/0016-android-trust-root-set.md): the updatable store `/apex/com.android.conscrypt/cacerts` when it yields a certificate, otherwise the system store `/system/etc/security/cacerts`, never a user-installed CA, and no TLS-dependent test without a root set. `TrustRootDeviceTest` checks it in the test application's process through the facade. Each run initializes one client with a loopback proxy and runs TLS-01 twice: directly to `8.8.8.8:443` with server name `dns.google`, whose chain reaches the GlobalSign Root CA present in the API 24 and API 35 stores, and on the proxy path through a CONNECT proxy in the test process that never contacts the target and answers the handshake with a leaf for the same name issued by a synthetic test CA (`android/src/androidTest/assets/barometer/trust-roots/`, no private key of the CA is kept). Only the reported `certificate_validation` is checked.
+
+`scripts/android-trust-scenario.sh` prepares each scenario on the emulator as root and `reset` undoes it; the test reads the scenario from the instrumentation argument `trustScenario`:
+
+```sh
+bash scripts/android-trust-scenario.sh user-ca
+cd example/android && ./gradlew :barometer_flutter:connectedDebugAndroidTest \
+  -Pandroid.testInstrumentationRunnerArguments.class=com.tvrain.barometer_flutter.TrustRootDeviceTest \
+  -Pandroid.testInstrumentationRunnerArguments.trustScenario=user-ca
+bash scripts/android-trust-scenario.sh reset
+```
+
+| Scenario | Emulator state | Expected direct, intercepted | API 24 | API 35 |
+|---|---|---|---|---|
+| `platform` | Stores unchanged | `trusted`, `untrusted`: the system store is found and the synthetic CA is rejected | Passed | Passed |
+| `user-ca` | Synthetic CA installed in the user store `/data/misc/user/0/cacerts-added` and in `/data/misc/keychain/certs-added`, which Go's own loader reads | `trusted`, `untrusted`: the user-installed CA is rejected | Passed | Passed |
+| `updatable-only` | The updatable store, as applications see it, holds only the synthetic CA | `untrusted`, `trusted`: the root set follows the updatable store | Not applicable (no updatable store) | Passed |
+| `system-only` | The system store, as applications see it, holds only the synthetic CA | API 24: `untrusted`, `trusted` (the system store is the root set); API 35: `trusted`, `untrusted` (the system store is not read while the updatable store yields certificates) | Passed | Passed |
+
+Run on 2026-11-09 with the library above on the emulators of the previous table; build fingerprints `Android/sdk_phone_arm64/generic_arm64:7.0/NYC/8695085:userdebug/test-keys` and `Android/sdk_phone64_arm64/emu64a:15/AE3A.240806.019/12368160:userdebug/test-keys`. A store is replaced by a bind mount, labeled like the store, in the zygote mount namespaces, so the application sees it while the system and APEX images stay unchanged; on API 24, which has no `nsenter`, the mount is made in the shell's namespace and propagates to the zygote. As a control, the `updatable-only` state on API 35 run with the `platform` expectations failed on the direct handshake. No result was printed or recorded.
+
+This is emulator evidence. A device whose Conscrypt module was updated, so that the two stores differ by more than this substitution, is check AD-04 of the [deferred device checks](https://github.com/tv-rain/barometer/blob/main/docs/device-checks.md). The direct case depends on `8.8.8.8` serving a chain to a root in the image's store; the GlobalSign cross-signature it relies on expires in January 2028.
 
 ## Method Channel
 
@@ -77,7 +102,7 @@ The API 21 run covers the native library alone: it runs the plugin's own test AP
 
 ## Observed Behavior and Gaps
 
-- **Trust store.** Go 1.26 loads `/system/etc/security/cacerts` and, on Android, also `/data/misc/keychain/certs-added`, the user-installed CA directory. Android 7 and later do not trust user-installed CAs for applications by default, so Go's pool may be wider than the application's platform policy. Go does not read the updatable store `/apex/com.android.conscrypt/cacerts` of API 34 and later; on the API 35 emulator the two stores held the same certificates, which an updated device need not. The probe ran as the shell user, not inside the application sandbox, and no user CA was installed. Handling of user-installed roots is open for M3 (DEV-708).
+- **Trust store.** Go's own Android loader reads `/system/etc/security/cacerts` and the user-installed CA directory `/data/misc/keychain/certs-added`, and never the updatable store of API 34 and later. The library no longer uses it on Android: it loads the root set of decision 0016, checked in the application process above. User-disabled system CAs are not consulted, and a device with an updated Conscrypt module has not been tested.
 - **Probe build on API 21.** A probe linked by Go's internal linker (`CGO_ENABLED=0`) crashed at start on the API 21 emulator; one built with the NDK `aarch64-linux-android21-clang` ran. The gomobile library is built with the NDK and loaded on API 21 in the instrumented tests.
 - **Network on API 21 to 22.** The platform has no active-network handle there. The adapter reads IPv4 and IPv6 from the single connected network of the active type and reports them `unknown` otherwise, which fails closed for TCP-01.
 - **Resolver.** An unknown name is reported as `resolver_error`, never `no_data`, because the platform does not separate it from a resolver failure before API 29. A lookup abandoned at its deadline keeps its worker thread until the platform returns.
