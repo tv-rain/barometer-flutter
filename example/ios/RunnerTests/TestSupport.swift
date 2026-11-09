@@ -44,28 +44,31 @@ enum TestDocuments {
     return try json(config)
   }
 
-  /// A one-time embedded TCP-01 task; `proxy` selects the proxy path.
-  static func runTask(_ id: String, proxy: Bool = false) throws -> String {
+  /// A one-time embedded task, TCP-01 to 1.1.1.1:443 unless `test` and `input` name another;
+  /// `proxy` selects the proxy path.
+  static func runTask(
+    _ id: String, proxy: Bool = false, test: String = "TCP-01", input: [String: Any] = tcpInput
+  ) throws -> String {
     var execution: [String: Any] = ["limits": [String: Any]()]
     if proxy { execution["network_path"] = "proxy" }
     return try json([
-      "schema_version": "0.1.0", "task_id": id, "test_id": "TCP-01", "test_version": "0.1.0",
-      "input": tcpInput, "options": [String: Any](),
+      "schema_version": "0.1.0", "task_id": id, "test_id": test, "test_version": "0.1.0",
+      "input": input, "options": [String: Any](),
       "schedule": ["not_after": utc(Date().addingTimeInterval(86_400))],
       "execution": execution,
       "safety": ["risk_level": "low", "requires_user_consent": false],
     ])
   }
 
-  /// A synthetic `barometer-trust/1` document permitting TCP-01 to 1.1.1.1:443 on both paths
-  /// for the deployment and the embedded issuer, with the test proxy's connection code and the
-  /// linkage scope approved. It is built when the test runs because the registration expires
-  /// 48 hours later.
-  static func trustDocument() throws -> Data {
-    let testRef: [String: Any] = ["id": "TCP-01", "version": "0.1.0"]
+  /// A synthetic `barometer-trust/1` document permitting TCP-01 to 1.1.1.1:443, or `test` to
+  /// `tuple`, on both paths for the deployment and the embedded issuer, with the test proxy's
+  /// connection code and the linkage scope approved. It is built when the test runs because the
+  /// registration expires 48 hours later.
+  static func trustDocument(test: String = "TCP-01", tuple: [String: Any] = tcpTuple) throws -> Data {
+    let testRef: [String: Any] = ["id": test, "version": "0.1.0"]
     let paths: [String: Any] = ["direct": true, "proxy": true]
     let registration: [String: Any] = [
-      "id": "reg-a", "test": testRef, "role": "measurement", "tuple": tcpTuple, "paths": paths,
+      "id": "reg-a", "test": testRef, "role": "measurement", "tuple": tuple, "paths": paths,
       "baseline_risk": "low", "owner": "synthetic", "purpose": "synthetic", "review_generation": 1,
       "expires_at": utc(Date().addingTimeInterval(48 * 3600)), "redirect_ids": [Any](),
     ]
