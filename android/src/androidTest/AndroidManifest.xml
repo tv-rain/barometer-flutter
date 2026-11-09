@@ -13,6 +13,12 @@
         android:name="com.tvrain.barometer_flutter.RunnerService"
         android:exported="false"
         android:process=":runner" />
+    <!-- Test-only: leaves pending bundles, replay and run-ledger state with an active attempt in
+         its own process so tests can kill it and check the state in the next process. -->
+    <service
+        android:name="com.tvrain.barometer_flutter.DurabilityService"
+        android:exported="false"
+        android:process=":durability" />
     <!-- Test-only: asks for the VPN permission on API 21, which has no shell command for it. -->
     <activity
         android:name="com.tvrain.barometer_flutter.VpnConsentActivity"

@@ -59,8 +59,9 @@ flutter {
 }
 
 /**
- * Writes the example's synthetic Barometer files from `example/barometer/` into the
- * generated assets as `barometer/trust.json` and `barometer/tasks/<name>.json`.
+ * Writes the example's synthetic Barometer files from `example/barometer/`, or the directory
+ * that `barometerExampleAssets` selects, into the generated assets as `barometer/trust.json`
+ * and `barometer/tasks/<name>.json`.
  *
  * The files carry placeholders that are filled at every build: `__BUILD_STAMP__` with the
  * build time in Unix seconds (part of each task identifier, so a rebuilt task never conflicts
@@ -101,8 +102,17 @@ abstract class BarometerExampleAssets : DefaultTask() {
     }
 }
 
+// The Gradle property `barometerExampleAssets` selects another directory of `example/` for
+// these files. `barometer-fixtures` holds the nine synthetic tasks of the measurement
+// integration test, which run only against scripts/android-measurement-fixtures.sh.
+val barometerExampleAssetsDir =
+    (findProperty("barometerExampleAssets") as String?)?.trim()?.takeIf { it.isNotEmpty() } ?: "barometer"
+check(barometerExampleAssetsDir in setOf("barometer", "barometer-fixtures")) {
+    "barometerExampleAssets must be barometer or barometer-fixtures"
+}
+
 val barometerExampleAssets = tasks.register<BarometerExampleAssets>("barometerExampleAssets") {
-    source.set(rootProject.layout.projectDirectory.dir("../barometer"))
+    source.set(rootProject.layout.projectDirectory.dir("../$barometerExampleAssetsDir"))
     output.set(layout.buildDirectory.dir("generated/barometer"))
 }
 

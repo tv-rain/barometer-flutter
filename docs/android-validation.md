@@ -23,7 +23,56 @@ slices:
 status: compiled only; not a release, not platform support
 ```
 
-[Host Policy, Proxy and Signed Remote Tasks](#host-policy-proxy-and-signed-remote-tasks) and [Signals, Lifecycle and Linkage Keys](#signals-lifecycle-and-linkage-keys) were recorded with this library. [Trust Roots Inside the Application](#trust-roots-inside-the-application) was recorded at the earlier pin `d7a5440ef35accc89a16a3074c586fa3d9f0308a`, and the sections after it at `c49695c9406d64d34d247de827ae2b0343634640` and, where they say so, `52789565c85f9d14d7b2ce1d5e42f85b11cea753`; their build-info differs from the one above only in the `commit` line.
+[Durability, Full Disk and the Nine Measurements](#durability-full-disk-and-the-nine-measurements), [Host Policy, Proxy and Signed Remote Tasks](#host-policy-proxy-and-signed-remote-tasks) and [Signals, Lifecycle and Linkage Keys](#signals-lifecycle-and-linkage-keys) were recorded with this library. [Trust Roots Inside the Application](#trust-roots-inside-the-application) was recorded at the earlier pin `d7a5440ef35accc89a16a3074c586fa3d9f0308a`, and the sections after it at `c49695c9406d64d34d247de827ae2b0343634640` and, where they say so, `52789565c85f9d14d7b2ce1d5e42f85b11cea753`; their build-info differs from the one above only in the `commit` line.
+
+## Durability, Full Disk and the Nine Measurements
+
+Run on 2026-11-09 with the library above, Flutter 3.47.6 and emulators started headless (`-no-window`). These rows are the emulator coverage of the deferred device checks AD-06, AD-07 and AD-09 of the [deferred device checks](https://github.com/tv-rain/barometer/blob/main/docs/device-checks.md); a physical device, power loss and vendor power management remain open there.
+
+| Target | Build fingerprint | OS | ABI |
+|---|---|---|---|
+| Emulator, `system-images;android-24;default;arm64-v8a` | `Android/sdk_phone_arm64/generic_arm64:7.0/NYC/8695085:userdebug/test-keys` | Android 7.0 (API 24) | `arm64-v8a` |
+| Emulator, `system-images;android-35;default;arm64-v8a` | `Android/sdk_phone64_arm64/emu64a:15/AE3A.240806.019/12368160:userdebug/test-keys` | Android 15 (API 35) | `arm64-v8a` |
+
+**Durability and process kill.** `DurabilityDeviceTest` binds `DurabilityService` in its own process. The service runs a one-time task and a repeating task (at most two runs, six hours apart) to completion through a loopback proxy that answers CONNECT without contacting the target, keeps their bundle pending, checks that a task reusing the one-time task's identifier with other content is rejected as `task_id_conflict`, and starts a third attempt that waits on a proxy that never answers. The test kills the process with `Process.killProcess` during that attempt. The next process opens the scope and finds the same oldest pending bundle, byte for byte by SHA-256; both completed tasks, admitted again as exact redeliveries, return `run_not_due`, because the run ledger kept their runs; and the conflicting task is still rejected as `task_id_conflict`, because the replay record kept the identifier. `clearMeasurementData` then removes every record and the sentinel. A kill during a write is `RecordStoreDeviceTest.writesAreAtomicUnderProcessKillAndSurviveRestart`: a process that replaces a record of the largest size with alternating values is killed mid-write, and the next process finds either the earlier or the new value, never a mixture, and the record written before the loop unchanged.
+
+**Full disk.** `StorageFullDeviceTest` stores a completed run's records, a pending bundle and, from API 23, the linkage key and sentinel, admits a second task, and then fills the emulator's data partition: a filler file in the test application's files directory takes the free space with `posix_fallocate` in shrinking extents, without writing them, and single-byte appends fill the last block until `ENOSPC`, so the partition reports zero bytes available to the application. On the full partition a new task is rejected as `task_trust_unavailable`, because its replay record cannot be stored; the admitted task returns `run_not_due`, because its run cannot be reserved in the ledger; the stored record files and the pending bundle are unchanged and no temporary file is left behind. `clearMeasurementData`, still on the full partition, returns within 10 seconds and leaves no record, no Keystore key and no sentinel. The first run of this test found clearing failing with `clearing_incomplete` on a full partition, because the clearing marker could not be stored; the record store now keeps a 64 KiB reserve file per scope that a clearing-marker put releases first ([Android State Storage](../README.md#android-state-storage)).
+
+**Instrumented suite.** `./gradlew :barometer_flutter:connectedDebugAndroidTest` from `example/android`, 46 tests: on API 24, 41 passed and 5 skipped; on API 35, 43 passed and 3 skipped, with the skips listed in [Host Policy, Proxy and Signed Remote Tasks](#host-policy-proxy-and-signed-remote-tasks). `DurabilityDeviceTest`, `StorageFullDeviceTest` and `RecordStoreDeviceTest` (9 tests) also passed on both emulators in umbrella mode, with the umbrella AAR below in place of the plugin's library.
+
+**The nine measurements from Dart.** `example/integration_test/measurements_test.dart` runs TCP-01, DNS-01, DNS-03, DNS-04, TLS-01, HTTP-01, NET-01, NET-03 and NET-05 from Dart through `BarometerClient`, each as a synthetic one-time embedded task from `example/barometer-fixtures/`, against host fixtures prepared by `scripts/android-measurement-fixtures.sh start` ([README](../README.md#measurement-fixtures-android)). Every task names only `8.8.8.8` or `fixture.example.org` bootstrapped to it; the emulator's packet filter sends that traffic to `scripts/measurement_fixtures.py` on the host and rejects any other packet for the address, and a CA generated for the run is the emulator's only trust root (the system store on API 24, the updatable store on API 35). The test checks, for each task, one result with execution state `completed` from platform `android`, no pending bundle after the acknowledgement, and the observation types and outcome below. The outcomes are those of synthetic fixtures, not measurement data, and no result was printed or recorded.
+
+| Task | Observation types | Outcome |
+|---|---|---|
+| TCP-01 to `8.8.8.8:443` | `tcp_connect` | `connected` |
+| DNS-01, direct UDP to `8.8.8.8:53`, `example.org` A | `dns_query` | `resolved` |
+| DNS-03, `https://fixture.example.org/dns-query` bootstrapped to `8.8.8.8` | `tcp_connect`, `tls_handshake`, `http_exchange`, `dns_query` | `response` |
+| DNS-04, `fixture.example.org:853` bootstrapped to `8.8.8.8` | `tcp_connect`, `tls_handshake`, `dns_query` | `response` |
+| TLS-01 to `8.8.8.8:443`, server name `fixture.example.org` | `tcp_connect`, `tls_handshake` | `handshake_succeeded` |
+| HTTP-01, `https://8.8.8.8/fixture`, expected status 200 | `tcp_connect`, `tls_handshake`, `http_exchange` | `expected_response` |
+| NET-01 | none | `snapshot` |
+| NET-03, `http://8.8.8.8/generate_204`, expected status 204 | `tcp_connect`, `http_exchange` | `validated` |
+| NET-05, a profile of DNS-01 (direct TCP), TCP-01, TLS-01 and HTTP-01 steps against the same fixtures | none at the top level | `completed` |
+
+| Build | API 24 | API 35 |
+|---|---|---|
+| Standalone (the library above) | 1 of 1 passed | 1 of 1 passed |
+| Umbrella (the AAR below) | 1 of 1 passed | 1 of 1 passed |
+
+As a control, the standalone run on API 24 with the fixture listeners stopped and the redirect in place failed at the first task with `connection_refused`. In umbrella mode the example APK holds one `libgojni.so` per ABI, the umbrella's, and the CircumRain and `barometermobile` classes together. The umbrella AAR was built locally from the CircumRain umbrella's `barometer-integration` branch (`b4e7560`) with `make bind-android`, after `go get` raised its `barometer-go` requirement to the pin above; the raise changed no other module version, and the change was not committed there. Its build information:
+
+```text
+artifact: umbrella AAR (android/arm, android/arm64, android/386, android/amd64)
+binds: circum-rain-lib, circum-rain-config, barometermobile
+barometermobile: commit 7f5d7de7ada4709c1b2a4fdebbb4fb9b013ef918
+go: go1.26.9
+gomobile: golang.org/x/mobile v0.0.0-20260820023541-8e8303b9da6c
+flags: -trimpath -androidapi 21 -ldflags='-s -w'
+ndk: 29.0.14206865
+status: local build for validation only; not a release, not platform support
+```
+
+The umbrella's own check (`make check-barometer-android`) reported no skipped `barometermobile` exports and no build-host paths in its four libraries. API 21 was not run: a Flutter application cannot run below API 24, and the native durability rows did not change there.
 
 ## Host Policy, Proxy and Signed Remote Tasks
 
@@ -149,4 +198,4 @@ The API 21 run covers the native library alone: it runs the plugin's own test AP
 - **Probe build on API 21.** A probe linked by Go's internal linker (`CGO_ENABLED=0`) crashed at start on the API 21 emulator; one built with the NDK `aarch64-linux-android21-clang` ran. The gomobile library is built with the NDK and loaded on API 21 in the instrumented tests.
 - **Network on API 21 to 22.** The platform has no active-network handle there. The adapter reads IPv4 and IPv6 from the single connected network of the active type and reports them `unknown` otherwise, which fails closed for TCP-01.
 - **Resolver.** An unknown name is reported as `resolver_error`, never `no_data`, because the platform does not separate it from a resolver failure before API 29. A lookup abandoned at its deadline keeps its worker thread until the platform returns.
-- **Not covered.** Any physical device (see above); uninstall and reinstall, backup and restore and device-to-device migration of linkage keys; the Dart API on API 21 to 34, and the umbrella build. The `x86_64` slice has run only the example's integration test in CI. The VPN, validation, captive-portal and suspension signals, lifecycle and cancellation and the protected linkage keys ran on emulators only ([Signals, Lifecycle and Linkage Keys](#signals-lifecycle-and-linkage-keys)).
+- **Not covered.** Any physical device (see above); power loss; uninstall and reinstall, backup and restore and device-to-device migration of linkage keys; the Dart API on API 21 to 23 and 25 to 34. The umbrella build ran on API 24 and 35 emulators only ([Durability, Full Disk and the Nine Measurements](#durability-full-disk-and-the-nine-measurements)). The `x86_64` slice has run only the example's integration test in CI. The VPN, validation, captive-portal and suspension signals, lifecycle and cancellation and the protected linkage keys ran on emulators only ([Signals, Lifecycle and Linkage Keys](#signals-lifecycle-and-linkage-keys)).

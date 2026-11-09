@@ -1,0 +1,497 @@
+{
+  "format": "barometer-trust/1",
+  "policy": {
+    "generation": 1,
+    "permissions": {
+      "tests": [
+        {
+          "id": "TCP-01",
+          "version": "0.1.0"
+        },
+        {
+          "id": "DNS-01",
+          "version": "0.1.0"
+        },
+        {
+          "id": "DNS-03",
+          "version": "0.1.0"
+        },
+        {
+          "id": "DNS-04",
+          "version": "0.1.0"
+        },
+        {
+          "id": "TLS-01",
+          "version": "0.1.0"
+        },
+        {
+          "id": "HTTP-01",
+          "version": "0.1.0"
+        },
+        {
+          "id": "NET-01",
+          "version": "0.1.0"
+        },
+        {
+          "id": "NET-03",
+          "version": "0.1.0"
+        },
+        {
+          "id": "NET-05",
+          "version": "0.1.0"
+        }
+      ],
+      "registration_ids": [
+        "tcp-01",
+        "dns-01-name",
+        "dns-01-resolver",
+        "dns-01-resolver-tcp",
+        "dns-03-name",
+        "dns-03-resolver",
+        "dns-04-name",
+        "dns-04-resolver",
+        "tls-01",
+        "http-01",
+        "net-03"
+      ],
+      "paths": {
+        "direct": true,
+        "proxy": false
+      },
+      "max_risk": "medium",
+      "require_consent": false,
+      "allow_medium_risk": true,
+      "allow_composite": true,
+      "allow_unknown_risk": false,
+      "label_namespaces": [],
+      "limits": {
+        "attempt": {
+          "duration_ms": 60000,
+          "bytes_sent": 65536,
+          "bytes_received": 262144,
+          "connections": 12
+        },
+        "max_runs": 28,
+        "max_attempts": 2,
+        "max_validity_seconds": 604800,
+        "min_repeat_interval_seconds": 21600,
+        "min_repeat_jitter_seconds": 300,
+        "min_retry_delay_ms": 30000,
+        "max_retry_delay_ms": 600000,
+        "max_retry_jitter_ms": 60000,
+        "max_result_bytes": 65536,
+        "max_bundle_bytes": 262144,
+        "max_results_per_bundle": 16,
+        "max_pending_bundles": 32,
+        "max_pending_bytes": 4194304,
+        "max_retention_seconds": 86400
+      }
+    },
+    "issuers": [
+      {
+        "issuer_id": "fixture-embedded-issuer",
+        "permissions": {
+          "tests": [
+            {
+              "id": "TCP-01",
+              "version": "0.1.0"
+            },
+            {
+              "id": "DNS-01",
+              "version": "0.1.0"
+            },
+            {
+              "id": "DNS-03",
+              "version": "0.1.0"
+            },
+            {
+              "id": "DNS-04",
+              "version": "0.1.0"
+            },
+            {
+              "id": "TLS-01",
+              "version": "0.1.0"
+            },
+            {
+              "id": "HTTP-01",
+              "version": "0.1.0"
+            },
+            {
+              "id": "NET-01",
+              "version": "0.1.0"
+            },
+            {
+              "id": "NET-03",
+              "version": "0.1.0"
+            },
+            {
+              "id": "NET-05",
+              "version": "0.1.0"
+            }
+          ],
+          "registration_ids": [
+            "tcp-01",
+            "dns-01-name",
+            "dns-01-resolver",
+            "dns-01-resolver-tcp",
+            "dns-03-name",
+            "dns-03-resolver",
+            "dns-04-name",
+            "dns-04-resolver",
+            "tls-01",
+            "http-01",
+            "net-03"
+          ],
+          "paths": {
+            "direct": true,
+            "proxy": false
+          },
+          "max_risk": "medium",
+          "require_consent": false,
+          "allow_medium_risk": true,
+          "allow_composite": true,
+          "allow_unknown_risk": false,
+          "label_namespaces": [],
+          "limits": {
+            "attempt": {
+              "duration_ms": 60000,
+              "bytes_sent": 65536,
+              "bytes_received": 262144,
+              "connections": 12
+            },
+            "max_runs": 28,
+            "max_attempts": 2,
+            "max_validity_seconds": 604800,
+            "min_repeat_interval_seconds": 21600,
+            "min_repeat_jitter_seconds": 300,
+            "min_retry_delay_ms": 30000,
+            "max_retry_delay_ms": 600000,
+            "max_retry_jitter_ms": 60000,
+            "max_result_bytes": 65536,
+            "max_bundle_bytes": 262144,
+            "max_results_per_bundle": 16,
+            "max_pending_bundles": 32,
+            "max_pending_bytes": 4194304,
+            "max_retention_seconds": 86400
+          }
+        }
+      }
+    ],
+    "targets": [
+      {
+        "id": "tcp-01",
+        "test": {
+          "id": "TCP-01",
+          "version": "0.1.0"
+        },
+        "role": "measurement",
+        "tuple": {
+          "address": "8.8.8.8",
+          "port": 443,
+          "scheme": "tcp"
+        },
+        "paths": {
+          "direct": true,
+          "proxy": false
+        },
+        "baseline_risk": "low",
+        "owner": "synthetic",
+        "purpose": "synthetic",
+        "review_generation": 1,
+        "expires_at": "__EXPIRES_AT__",
+        "redirect_ids": []
+      },
+      {
+        "id": "dns-01-name",
+        "test": {
+          "id": "DNS-01",
+          "version": "0.1.0"
+        },
+        "role": "measurement",
+        "tuple": {
+          "hostname": "example.org"
+        },
+        "paths": {
+          "direct": true,
+          "proxy": false
+        },
+        "baseline_risk": "low",
+        "owner": "synthetic",
+        "purpose": "synthetic",
+        "review_generation": 1,
+        "expires_at": "__EXPIRES_AT__",
+        "redirect_ids": []
+      },
+      {
+        "id": "dns-01-resolver",
+        "test": {
+          "id": "DNS-01",
+          "version": "0.1.0"
+        },
+        "role": "resolver",
+        "tuple": {
+          "address": "8.8.8.8",
+          "port": 53,
+          "scheme": "udp"
+        },
+        "paths": {
+          "direct": true,
+          "proxy": false
+        },
+        "baseline_risk": "low",
+        "owner": "synthetic",
+        "purpose": "synthetic",
+        "review_generation": 1,
+        "expires_at": "__EXPIRES_AT__",
+        "redirect_ids": []
+      },
+      {
+        "id": "dns-01-resolver-tcp",
+        "test": {
+          "id": "DNS-01",
+          "version": "0.1.0"
+        },
+        "role": "resolver",
+        "tuple": {
+          "address": "8.8.8.8",
+          "port": 53,
+          "scheme": "tcp"
+        },
+        "paths": {
+          "direct": true,
+          "proxy": false
+        },
+        "baseline_risk": "low",
+        "owner": "synthetic",
+        "purpose": "synthetic",
+        "review_generation": 1,
+        "expires_at": "__EXPIRES_AT__",
+        "redirect_ids": []
+      },
+      {
+        "id": "dns-03-name",
+        "test": {
+          "id": "DNS-03",
+          "version": "0.1.0"
+        },
+        "role": "measurement",
+        "tuple": {
+          "hostname": "example.org"
+        },
+        "paths": {
+          "direct": true,
+          "proxy": false
+        },
+        "baseline_risk": "medium",
+        "owner": "synthetic",
+        "purpose": "synthetic",
+        "review_generation": 1,
+        "expires_at": "__EXPIRES_AT__",
+        "redirect_ids": []
+      },
+      {
+        "id": "dns-03-resolver",
+        "test": {
+          "id": "DNS-03",
+          "version": "0.1.0"
+        },
+        "role": "resolver",
+        "tuple": {
+          "url": "https://fixture.example.org/dns-query",
+          "hostname": "fixture.example.org",
+          "resolver_name": "fixture.example.org",
+          "tls_server_name": "fixture.example.org",
+          "port": 443,
+          "scheme": "https",
+          "bootstrap_addresses": [
+            "8.8.8.8"
+          ]
+        },
+        "paths": {
+          "direct": true,
+          "proxy": false
+        },
+        "baseline_risk": "medium",
+        "owner": "synthetic",
+        "purpose": "synthetic",
+        "review_generation": 1,
+        "expires_at": "__EXPIRES_AT__",
+        "redirect_ids": []
+      },
+      {
+        "id": "dns-04-name",
+        "test": {
+          "id": "DNS-04",
+          "version": "0.1.0"
+        },
+        "role": "measurement",
+        "tuple": {
+          "hostname": "example.org"
+        },
+        "paths": {
+          "direct": true,
+          "proxy": false
+        },
+        "baseline_risk": "medium",
+        "owner": "synthetic",
+        "purpose": "synthetic",
+        "review_generation": 1,
+        "expires_at": "__EXPIRES_AT__",
+        "redirect_ids": []
+      },
+      {
+        "id": "dns-04-resolver",
+        "test": {
+          "id": "DNS-04",
+          "version": "0.1.0"
+        },
+        "role": "resolver",
+        "tuple": {
+          "hostname": "fixture.example.org",
+          "resolver_name": "fixture.example.org",
+          "tls_server_name": "fixture.example.org",
+          "port": 853,
+          "scheme": "tls",
+          "bootstrap_addresses": [
+            "8.8.8.8"
+          ]
+        },
+        "paths": {
+          "direct": true,
+          "proxy": false
+        },
+        "baseline_risk": "medium",
+        "owner": "synthetic",
+        "purpose": "synthetic",
+        "review_generation": 1,
+        "expires_at": "__EXPIRES_AT__",
+        "redirect_ids": []
+      },
+      {
+        "id": "tls-01",
+        "test": {
+          "id": "TLS-01",
+          "version": "0.1.0"
+        },
+        "role": "measurement",
+        "tuple": {
+          "address": "8.8.8.8",
+          "port": 443,
+          "scheme": "tls",
+          "tls_server_name": "fixture.example.org"
+        },
+        "paths": {
+          "direct": true,
+          "proxy": false
+        },
+        "baseline_risk": "low",
+        "owner": "synthetic",
+        "purpose": "synthetic",
+        "review_generation": 1,
+        "expires_at": "__EXPIRES_AT__",
+        "redirect_ids": []
+      },
+      {
+        "id": "http-01",
+        "test": {
+          "id": "HTTP-01",
+          "version": "0.1.0"
+        },
+        "role": "measurement",
+        "tuple": {
+          "hostname": "8.8.8.8",
+          "port": 443,
+          "scheme": "https",
+          "url": "https://8.8.8.8/fixture",
+          "expected_status": 200
+        },
+        "paths": {
+          "direct": true,
+          "proxy": false
+        },
+        "baseline_risk": "low",
+        "owner": "synthetic",
+        "purpose": "synthetic",
+        "review_generation": 1,
+        "expires_at": "__EXPIRES_AT__",
+        "redirect_ids": []
+      },
+      {
+        "id": "net-03",
+        "test": {
+          "id": "NET-03",
+          "version": "0.1.0"
+        },
+        "role": "measurement",
+        "tuple": {
+          "hostname": "8.8.8.8",
+          "port": 80,
+          "scheme": "http",
+          "url": "http://8.8.8.8/generate_204",
+          "expected_status": 204
+        },
+        "paths": {
+          "direct": true,
+          "proxy": false
+        },
+        "baseline_risk": "low",
+        "owner": "synthetic",
+        "purpose": "synthetic",
+        "review_generation": 1,
+        "expires_at": "__EXPIRES_AT__",
+        "redirect_ids": []
+      }
+    ],
+    "keys": [],
+    "release_reviewed_tasks": [
+      {
+        "issuer_id": "fixture-embedded-issuer",
+        "task_sha256": "__TASK_SHA256_tcp-01__"
+      },
+      {
+        "issuer_id": "fixture-embedded-issuer",
+        "task_sha256": "__TASK_SHA256_dns-01__"
+      },
+      {
+        "issuer_id": "fixture-embedded-issuer",
+        "task_sha256": "__TASK_SHA256_dns-03__"
+      },
+      {
+        "issuer_id": "fixture-embedded-issuer",
+        "task_sha256": "__TASK_SHA256_dns-04__"
+      },
+      {
+        "issuer_id": "fixture-embedded-issuer",
+        "task_sha256": "__TASK_SHA256_tls-01__"
+      },
+      {
+        "issuer_id": "fixture-embedded-issuer",
+        "task_sha256": "__TASK_SHA256_http-01__"
+      },
+      {
+        "issuer_id": "fixture-embedded-issuer",
+        "task_sha256": "__TASK_SHA256_net-01__"
+      },
+      {
+        "issuer_id": "fixture-embedded-issuer",
+        "task_sha256": "__TASK_SHA256_net-03__"
+      },
+      {
+        "issuer_id": "fixture-embedded-issuer",
+        "task_sha256": "__TASK_SHA256_net-05__"
+      }
+    ]
+  },
+  "configuration_approvals": {
+    "endpoints": [],
+    "connection_codes": [],
+    "linkage_scopes": [],
+    "allow_linkage": false
+  },
+  "context_approvals": {
+    "connection_codes": [],
+    "classification_versions": [],
+    "country_codes": [],
+    "region_codes": []
+  }
+}

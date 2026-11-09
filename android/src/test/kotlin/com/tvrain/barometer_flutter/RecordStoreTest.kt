@@ -73,6 +73,28 @@ class RecordStoreTest {
     }
 
     @Test
+    fun aClearingMarkerTakesTheReserveAndReleasesItWhenDeleted() {
+        val s = open()
+        val reserve = File(base, "test/clearing.reserve")
+        assertEquals(65_536L, reserve.length())
+        assertTrue(reserve.readBytes().all { it == 0.toByte() })
+        val marker = key(4, 1)
+        s.put(marker, byteArrayOf(1), 1000)
+        assertTrue(!reserve.exists())
+        s.delete(marker, 1000)
+        assertEquals(65_536L, reserve.length())
+        // A store opened while a marker is stored keeps no reserve until the marker is gone.
+        s.put(marker, byteArrayOf(1), 1000)
+        s.close()
+        opened.remove(s)
+        val reopened = open()
+        assertTrue(!reserve.exists())
+        reopened.delete(marker, 1000)
+        assertEquals(65_536L, reserve.length())
+        assertEquals(emptyList<String>(), recordFiles())
+    }
+
+    @Test
     fun getReturnsACopyAndPutCopiesItsInput() {
         val s = open()
         val k = key(2, 1)

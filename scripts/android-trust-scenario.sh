@@ -17,12 +17,14 @@ set -euo pipefail
 # store it replaces, so applications started afterwards see it and nothing is written to
 # the system or APEX images. Run `reset` before using the emulator for anything else; a
 # reboot also undoes the mounts.
+# BAROMETER_TRUST_CA names another synthetic CA certificate to install in place of the test
+# assets' one; scripts/android-measurement-fixtures.sh uses it for the CA it generates.
 # The host needs adb and openssl.
 
 scenario=${1:-}
 adb=${ADB:-adb}
 root=$(cd "$(dirname "$0")/.." && pwd)
-ca="$root/android/src/androidTest/assets/barometer/trust-roots/ca.pem"
+ca=${BAROMETER_TRUST_CA:-$root/android/src/androidTest/assets/barometer/trust-roots/ca.pem}
 staging=/data/local/tmp/barometer-trust-store
 updatable=/apex/com.android.conscrypt/cacerts
 system=/system/etc/security/cacerts

@@ -1,0 +1,27 @@
+{
+  "schema_version": "0.1.0",
+  "task_id": "fixture-tls-01-__BUILD_STAMP__",
+  "test_id": "TLS-01",
+  "test_version": "0.1.0",
+  "input": {
+    "ip_address": "8.8.8.8",
+    "port": 443,
+    "server_name": "fixture.example.org"
+  },
+  "options": {},
+  "schedule": {
+    "repeat": {
+      "mode": "none"
+    },
+    "limits": {
+      "max_runs": 1
+    }
+  },
+  "execution": {
+    "limits": {}
+  },
+  "safety": {
+    "risk_level": "low",
+    "requires_user_consent": false
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "schema_version": "0.1.0",
+  "task_id": "fixture-net-03-__BUILD_STAMP__",
+  "test_id": "NET-03",
+  "test_version": "0.1.0",
+  "input": {
+    "url": "http://8.8.8.8/generate_204",
+    "expected_status": 204
+  },
+  "options": {},
+  "schedule": {
+    "repeat": {
+      "mode": "none"
+    },
+    "limits": {
+      "max_runs": 1
+    }
+  },
+  "execution": {
+    "limits": {}
+  },
+  "safety": {
+    "risk_level": "low",
+    "requires_user_consent": false
+  }
+}

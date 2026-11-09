@@ -33,7 +33,14 @@ internal class RecordStoreException : Exception("record storage unavailable")
  * synchronizes, reads the clock or works in the background. One file holds one record and is
  * named by its key, `"<class>-<64 lowercase hex digits>"`. A put writes a temporary file and
  * renames it over the record, so after a process kill either the earlier value or the new one
- * is stored, never a mixture. Durability across power loss and a full disk is not claimed.
+ * is stored, never a mixture. On a full disk a put fails and the earlier value stays stored.
+ * Durability across power loss is not claimed.
+ *
+ * Clearing must succeed on a full disk, and it starts by storing a clearing marker (class 4).
+ * The scope therefore keeps a small reserve file, `clearing.reserve`, next to the records
+ * directory: a put of a clearing marker deletes it first, so the marker fits, and it is
+ * allocated again once no marker is stored, or when the scope is opened, if space allows. The
+ * reserve holds only zero bytes.
  *
  * Every call runs on one serial worker thread, in arrival order, and the caller waits at most
  * its `timeoutMillis`. A call still queued at its deadline is withdrawn and never runs; a call
@@ -68,6 +75,9 @@ internal class RecordStore private constructor(
     /** Clearing-class keys stored, read only on the worker thread. */
     private val markers = HashSet<String>()
 
+    /** Space kept free for a clearing marker; see the class description. */
+    private val reserve = File(records.parentFile, RESERVE_NAME)
+
     /** Returns a copy of the value stored for [key], or null when none is stored. */
     fun get(key: String, timeoutMillis: Long): ByteArray? {
         checkKey(key)
@@ -81,6 +91,7 @@ internal class RecordStore private constructor(
         val copy = value.copyOf()
         serial(timeoutMillis) {
             if (cls != CLEARING_CLASS && markers.isNotEmpty()) throw RecordStoreException()
+            if (cls == CLEARING_CLASS) reserve.delete()
             try {
                 write(key, copy)
             } finally {
@@ -97,7 +108,10 @@ internal class RecordStore private constructor(
                 val file = File(records, key)
                 if (!file.delete() && file.exists()) throw RecordStoreException()
             } finally {
-                if (cls == CLEARING_CLASS) refreshMarker(key)
+                if (cls == CLEARING_CLASS) {
+                    refreshMarker(key)
+                    if (markers.isEmpty()) allocateReserve()
+                }
             }
         }
     }
@@ -202,6 +216,19 @@ internal class RecordStore private constructor(
         }
     }
 
+    /** Allocates the reserve if it is missing and space allows; a failure leaves none. */
+    private fun allocateReserve() {
+        if (reserve.length() == RESERVE_BYTES.toLong()) return
+        try {
+            FileOutputStream(reserve).use { out ->
+                out.write(ByteArray(RESERVE_BYTES))
+                out.fd.sync()
+            }
+        } catch (e: Exception) {
+            reserve.delete()
+        }
+    }
+
     private fun refreshMarker(key: String) {
         if (File(records, key).exists()) markers.add(key) else markers.remove(key)
     }
@@ -238,6 +265,7 @@ internal class RecordStore private constructor(
             }
         }
         markers.addAll(keys(CLEARING_CLASS))
+        if (markers.isEmpty()) allocateReserve()
     }
 
     companion object {
@@ -253,6 +281,10 @@ internal class RecordStore private constructor(
         private const val CLEARING_CLASS = 4L
         private const val CLOSE_BOUND_MILLIS = 5_000L
         private const val TEMP_PREFIX = ".tmp-"
+        private const val RESERVE_NAME = "clearing.reserve"
+
+        /** Room for a clearing marker, its temporary file and a directory block. */
+        private const val RESERVE_BYTES = 65_536
         private val SCOPE = Regex("[a-z0-9][a-z0-9_-]{0,63}")
 
         /** Canonical scope directories open in this process. */
