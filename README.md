@@ -92,6 +92,8 @@ flutter test integration_test -d <device-id>
 
 The method channel is `com.tvrain.barometer_flutter/client` with Flutter's standard method codec. Every argument is JSON text, an opaque handle, a bundle identifier, an embedded task name or signed package bytes. None is a trust input: no call installs a local policy, approval, trust root, issuer association or adapter, and the issuer of an embedded task and the trusted local document come only from the application package.
 
+TLS trust roots are chosen by the Go library, not by the host. On Android they are the platform's updatable or system CA store, never user-installed CAs, even when the application's network security configuration trusts them for its own traffic; without a loadable store, TLS-dependent tasks are rejected as `task_unsupported` ([decision 0016](https://github.com/tv-rain/barometer/blob/main/docs/decisions/0016-android-trust-root-set.md)).
+
 | Method | Arguments | Result |
 |---|---|---|
 | `initialize` | `{config: String}` | null |

@@ -4,13 +4,9 @@ import android.content.Context
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.File
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
-import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -131,10 +127,10 @@ class AdapterDeviceTest {
     @Test
     fun tcp01RunsThroughTheFacade() {
         val tuple = JSONObject().put("address", TCP_ADDRESS).put("port", 443).put("scheme", "tcp")
-        val client = newClient(trustDocument("TCP-01", tuple))
+        val client = newClient(DeviceTestDocuments.trustDocument("TCP-01", tuple))
         client.facade.initialize("{}")
         val input = JSONObject().put("ip_address", TCP_ADDRESS).put("port", 443)
-        val (result, raw) = runOne(client, runTask("tcp-device-1", "TCP-01", input))
+        val (result, raw) = runOne(client, DeviceTestDocuments.runTask("tcp-device-1", "TCP-01", input))
         assertResult(result, raw, "tcp_connect", listOf(TCP_ADDRESS))
         assertTrue(scopeDir().walk().any { it.isFile && it.parentFile?.name == "records" })
     }
@@ -142,10 +138,10 @@ class AdapterDeviceTest {
     @Test
     fun dns01RunsThroughTheNativeResolver() {
         val tuple = JSONObject().put("hostname", DNS_NAME)
-        val client = newClient(trustDocument("DNS-01", tuple))
+        val client = newClient(DeviceTestDocuments.trustDocument("DNS-01", tuple))
         client.facade.initialize("{}")
         val input = JSONObject().put("hostname", DNS_NAME).put("record_type", "A")
-        val (result, raw) = runOne(client, runTask("dns-device-1", "DNS-01", input))
+        val (result, raw) = runOne(client, DeviceTestDocuments.runTask("dns-device-1", "DNS-01", input))
         assertResult(result, raw, "dns_query", listOf(DNS_NAME))
         val outcome = result.getJSONObject("measurement").getString("outcome")
         assertTrue(outcome in setOf("resolved", "no_data", "resolver_error"))
@@ -167,7 +163,7 @@ class AdapterDeviceTest {
     /** Installs, admits and runs [task], returns its result from the bundle, then acknowledges. */
     private fun runOne(owner: BarometerClient, task: String): Pair<JSONObject, String> {
         val client = owner.facade
-        val ref = client.installEmbeddedTask(ISSUER, task.toByteArray())
+        val ref = client.installEmbeddedTask(DeviceTestDocuments.ISSUER, task.toByteArray())
         val handle = client.admitTask(task, ref)
         val run = client.startRun(handle)
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30)
@@ -187,67 +183,7 @@ class AdapterDeviceTest {
 
     companion object {
         private const val SCOPE = "adapter-device-test"
-        private const val ISSUER = "embedded-issuer"
         private const val TCP_ADDRESS = "1.1.1.1"
         private const val DNS_NAME = "example.org"
-
-        private fun utc(millis: Long): String =
-            SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US)
-                .apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }
-                .format(Date(millis))
-
-        private fun runTask(id: String, test: String, input: JSONObject): String =
-            JSONObject()
-                .put("schema_version", "0.1.0").put("task_id", id).put("test_id", test)
-                .put("test_version", "0.1.0").put("input", input).put("options", JSONObject())
-                .put("schedule", JSONObject().put("not_after", utc(System.currentTimeMillis() + 86_400_000L)))
-                .put("execution", JSONObject().put("limits", JSONObject()))
-                .put("safety", JSONObject().put("risk_level", "low").put("requires_user_consent", false))
-                .toString()
-
-        /**
-         * A synthetic `barometer-trust/1` document permitting [test] against one registered
-         * target for the deployment and the embedded issuer. It is built when the test runs
-         * because the registration expires 48 hours later.
-         */
-        private fun trustDocument(test: String, tuple: JSONObject): ByteArray {
-            val testRef = JSONObject().put("id", test).put("version", "0.1.0")
-            val paths = JSONObject().put("direct", true).put("proxy", true)
-            val registration = JSONObject()
-                .put("id", "reg-a").put("test", testRef).put("role", "measurement").put("tuple", tuple)
-                .put("paths", paths).put("baseline_risk", "low").put("owner", "synthetic")
-                .put("purpose", "synthetic").put("review_generation", 1)
-                .put("expires_at", utc(System.currentTimeMillis() + 48 * 3_600_000L))
-                .put("redirect_ids", JSONArray())
-            val limits = JSONObject()
-                .put("attempt", JSONObject().put("duration_ms", 60000).put("bytes_sent", 65536)
-                    .put("bytes_received", 262144).put("connections", 12))
-                .put("max_runs", 28).put("max_attempts", 2).put("max_validity_seconds", 604800)
-                .put("min_repeat_interval_seconds", 21600).put("min_repeat_jitter_seconds", 300)
-                .put("min_retry_delay_ms", 30000).put("max_retry_delay_ms", 600000)
-                .put("max_retry_jitter_ms", 60000).put("max_result_bytes", 65536)
-                .put("max_bundle_bytes", 262144).put("max_results_per_bundle", 16)
-                .put("max_pending_bundles", 32).put("max_pending_bytes", 4194304)
-                .put("max_retention_seconds", 86400)
-            fun permissions() = JSONObject()
-                .put("tests", JSONArray().put(testRef)).put("registration_ids", JSONArray().put("reg-a"))
-                .put("paths", paths).put("max_risk", "high").put("require_consent", false)
-                .put("allow_medium_risk", true).put("allow_composite", false)
-                .put("allow_unknown_risk", true).put("label_namespaces", JSONArray())
-                .put("limits", limits)
-            val policy = JSONObject()
-                .put("generation", 2).put("permissions", permissions())
-                .put("issuers", JSONArray().put(JSONObject().put("issuer_id", ISSUER).put("permissions", permissions())))
-                .put("targets", JSONArray().put(registration)).put("keys", JSONArray())
-            return JSONObject()
-                .put("format", "barometer-trust/1").put("policy", policy)
-                .put("configuration_approvals", JSONObject().put("endpoints", JSONArray())
-                    .put("connection_codes", JSONArray()).put("linkage_scopes", JSONArray())
-                    .put("allow_linkage", false))
-                .put("context_approvals", JSONObject().put("connection_codes", JSONArray())
-                    .put("classification_versions", JSONArray()).put("country_codes", JSONArray())
-                    .put("region_codes", JSONArray()))
-                .toString().toByteArray()
-        }
     }
 }
