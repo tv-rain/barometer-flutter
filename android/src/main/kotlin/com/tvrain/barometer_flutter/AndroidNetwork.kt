@@ -1,12 +1,16 @@
 package com.tvrain.barometer_flutter
 
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.net.ConnectivityManager
 import android.net.LinkProperties
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import android.os.Build
+import android.os.PowerManager
 import java.io.Closeable
 import java.net.Inet4Address
 import java.net.Inet6Address
@@ -28,24 +32,38 @@ internal data class AccessSnapshot(
     val ipv6: String,
     val validated: String,
     val captivePortal: String,
+    val suspended: String,
 )
 
 /**
- * The basic Android `Network` adapter: coarse access state and access-network generation from
- * [ConnectivityManager], and a single-shot change watch.
+ * The Android `Network` adapter: coarse access state and access-network generation from
+ * [ConnectivityManager] and [PowerManager], and a single-shot change watch.
  *
- * The generation starts at 1 and increases whenever the default network or its coarse state
- * (type, IPv4, IPv6) differs from the last one observed, either by a network callback or by
- * [access]. Capability updates that leave the coarse state unchanged, such as signal strength,
- * do not change it. VPN, validation and captive-portal signals are not reported yet and are
- * always `unknown`.
+ * The generation starts at 1 and increases whenever the default network or any reported value
+ * differs from the last one observed, either by a network callback, a device-idle broadcast or
+ * [access]. Capability updates that leave every value unchanged, such as signal strength, do
+ * not change it. Every value is read from the default network of this application:
  *
- * The callback is registered on construction and removed by [close]; construct it only when a
- * client is created. Requires `ACCESS_NETWORK_STATE`.
+ * - VPN: `detected` when the default network has the VPN transport, otherwise `not_detected`.
+ *   Before API 23 there is no per-application default network: a VPN is `detected` when the
+ *   active network is one, `not_detected` when no VPN network exists and `unknown` otherwise.
+ * - Validation and captive portal: the `VALIDATED` and `CAPTIVE_PORTAL` capabilities from
+ *   API 23, `unknown` before.
+ * - Suspension: `suspended` when the operating system stops the application's network work,
+ *   which is device idle (Doze) from API 23, a default network without `NOT_SUSPENDED` from
+ *   API 28 or one reported blocked for this application from API 29; `active` when every source
+ *   of the API level says otherwise; `unknown` before API 23 and while the blocked status of
+ *   the default network is not yet known. Backgrounding alone is not suspension.
+ *
+ * Without a default network the VPN, validation and captive-portal values are `unknown`.
+ * The callback and receiver are registered on construction and removed by [close]; construct
+ * it only when a client is created. Requires `ACCESS_NETWORK_STATE`.
  */
 internal class AndroidNetwork(context: Context) : Closeable {
+    private val app = context.applicationContext
     private val connectivity =
-        context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        app.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+    private val power = app.getSystemService(Context.POWER_SERVICE) as PowerManager
     private val lock = Any()
     private val dispatcher: ExecutorService = Executors.newSingleThreadExecutor { r ->
         Thread(r, "barometer-network").apply { isDaemon = true }
@@ -56,28 +74,70 @@ internal class AndroidNetwork(context: Context) : Closeable {
     private var last: Coarse? = null
     private var closed = false
 
+    /** The blocked status reported for each network (API 29 and later); guarded by [lock]. */
+    private val blocked = HashMap<Network, Boolean>()
+
     private class Watch(val generation: Long, val observer: () -> Unit) {
         val active = AtomicBoolean(true)
     }
 
     /** The default network and its coarse state; the network handle never leaves this class. */
-    private data class Coarse(val network: Any?, val type: String, val ipv4: String, val ipv6: String)
+    private data class Coarse(
+        val network: Any?,
+        val type: String,
+        val ipv4: String,
+        val ipv6: String,
+        val vpn: String = UNKNOWN,
+        val validated: String = UNKNOWN,
+        val captivePortal: String = UNKNOWN,
+        val suspended: String = UNKNOWN,
+    )
 
     private val callback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) = refresh()
-        override fun onLost(network: Network) = refresh()
+        override fun onLost(network: Network) {
+            synchronized(lock) { blocked.remove(network) }
+            refresh()
+        }
+
         override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) = refresh()
         override fun onLinkPropertiesChanged(network: Network, lp: LinkProperties) = refresh()
+
+        // API 29 and later.
+        override fun onBlockedStatusChanged(network: Network, isBlocked: Boolean) {
+            synchronized(lock) { blocked[network] = isBlocked }
+            refresh()
+        }
+    }
+
+    /** Device-idle changes (API 23 and later); the refresh runs on the adapter's own thread. */
+    private val idleReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            try {
+                dispatcher.execute { refresh() }
+            } catch (e: RejectedExecutionException) {
+            }
+        }
     }
 
     init {
         if (Build.VERSION.SDK_INT >= 24) {
             connectivity.registerDefaultNetworkCallback(callback)
         } else {
+            // A request excludes VPN networks unless NOT_VPN is removed.
             val request = NetworkRequest.Builder()
                 .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                .removeCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
                 .build()
             connectivity.registerNetworkCallback(request, callback)
+        }
+        if (Build.VERSION.SDK_INT >= 23) {
+            val filter = IntentFilter(PowerManager.ACTION_DEVICE_IDLE_MODE_CHANGED)
+            if (Build.VERSION.SDK_INT >= 33) {
+                app.registerReceiver(idleReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+            } else {
+                app.registerReceiver(idleReceiver, filter)
+            }
         }
         synchronized(lock) { last = coarse() }
     }
@@ -86,7 +146,9 @@ internal class AndroidNetwork(context: Context) : Closeable {
     fun access(): AccessSnapshot {
         val now = coarse()
         val gen = observe(now)
-        return AccessSnapshot(gen, now.type, UNKNOWN, now.ipv4, now.ipv6, UNKNOWN, UNKNOWN)
+        return AccessSnapshot(
+            gen, now.type, now.vpn, now.ipv4, now.ipv6, now.validated, now.captivePortal, now.suspended,
+        )
     }
 
     /**
@@ -128,6 +190,7 @@ internal class AndroidNetwork(context: Context) : Closeable {
         }
         stopped.forEach { it.active.set(false) }
         runCatching { connectivity.unregisterNetworkCallback(callback) }
+        if (Build.VERSION.SDK_INT >= 23) runCatching { app.unregisterReceiver(idleReceiver) }
         dispatcher.shutdownNow()
     }
 
@@ -161,7 +224,9 @@ internal class AndroidNetwork(context: Context) : Closeable {
 
     private fun coarse(): Coarse {
         if (Build.VERSION.SDK_INT < 23) return coarseLegacy()
-        val network = connectivity.activeNetwork ?: return Coarse(null, UNKNOWN, NO, NO)
+        val idle = power.isDeviceIdleMode
+        val network = connectivity.activeNetwork
+            ?: return Coarse(null, UNKNOWN, NO, NO, suspended = if (idle) SUSPENDED else ACTIVE)
         val caps = connectivity.getNetworkCapabilities(network)
         val lp = connectivity.getLinkProperties(network)
         val type = when {
@@ -171,16 +236,45 @@ internal class AndroidNetwork(context: Context) : Closeable {
             caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> ETHERNET
             else -> OTHER
         }
-        return families(network, type, lp)
+        val vpn = when {
+            caps == null -> UNKNOWN
+            caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN) -> DETECTED
+            else -> NOT_DETECTED
+        }
+        val validated = caps?.let { yesNo(it.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)) } ?: UNKNOWN
+        val portal = caps?.let { yesNo(it.hasCapability(NetworkCapabilities.NET_CAPABILITY_CAPTIVE_PORTAL)) } ?: UNKNOWN
+        val notSuspended = if (Build.VERSION.SDK_INT >= 28 && caps != null) {
+            caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_SUSPENDED)
+        } else {
+            true
+        }
+        val isBlocked = if (Build.VERSION.SDK_INT >= 29) synchronized(lock) { blocked[network] } else false
+        val suspended = when {
+            idle || !notSuspended || isBlocked == true -> SUSPENDED
+            isBlocked == null -> UNKNOWN
+            else -> ACTIVE
+        }
+        return families(network, type, lp).copy(
+            vpn = vpn, validated = validated, captivePortal = portal, suspended = suspended,
+        )
     }
 
     /**
      * Before API 23 there is no active-network handle: the active network is the connected one
      * of the active type, and its families are unknown unless exactly one such network exists.
+     * Validation, captive portal and suspension are not available.
      */
     @Suppress("DEPRECATION")
     private fun coarseLegacy(): Coarse {
         val info = connectivity.activeNetworkInfo
+        val anyVpn = connectivity.allNetworks.any {
+            connectivity.getNetworkCapabilities(it)?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true
+        }
+        val vpn = when {
+            info?.type == ConnectivityManager.TYPE_VPN -> DETECTED
+            anyVpn -> UNKNOWN
+            else -> NOT_DETECTED
+        }
         if (info == null || !info.isConnected) return Coarse(null, UNKNOWN, NO, NO)
         val type = when (info.type) {
             ConnectivityManager.TYPE_WIFI -> WIFI
@@ -191,8 +285,9 @@ internal class AndroidNetwork(context: Context) : Closeable {
         val matching = connectivity.allNetworks.filter { n ->
             connectivity.getNetworkInfo(n)?.let { it.type == info.type && it.isConnected } == true
         }
-        val network = matching.singleOrNull() ?: return Coarse(info.type, type, UNKNOWN, UNKNOWN)
-        return families(network, type, connectivity.getLinkProperties(network))
+        val network = matching.singleOrNull()
+            ?: return Coarse(info.type, type, UNKNOWN, UNKNOWN, vpn = vpn)
+        return families(network, type, connectivity.getLinkProperties(network)).copy(vpn = vpn)
     }
 
     private fun families(network: Network, type: String, lp: LinkProperties?): Coarse {
@@ -210,6 +305,10 @@ internal class AndroidNetwork(context: Context) : Closeable {
         const val OTHER = "other"
         const val YES = "yes"
         const val NO = "no"
+        const val DETECTED = "detected"
+        const val NOT_DETECTED = "not_detected"
+        const val SUSPENDED = "suspended"
+        const val ACTIVE = "active"
 
         /** Any text the facade does not accept is unknown; this one is used on purpose. */
         const val UNKNOWN = "unknown"

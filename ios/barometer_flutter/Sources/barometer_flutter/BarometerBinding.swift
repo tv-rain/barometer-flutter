@@ -207,9 +207,11 @@ private final class NetworkCallback: NSObject, BarometermobileNetworkProtocol {
 
   func access(_ timeoutMillis: Int64) throws -> BarometermobileAccessState {
     let s = try network.access(timeoutMillis: timeoutMillis)
+    // Suspension is not reported on Apple platforms yet; unknown does not block execution.
     guard
       let state = BarometermobileNewAccessState(
-        s.generation, s.networkType, s.vpn, s.ipv4, s.ipv6, s.validated, s.captivePortal)
+        s.generation, s.networkType, s.vpn, s.ipv4, s.ipv6, s.validated, s.captivePortal,
+        "unknown")
     else { throw AdapterUnavailableError() }
     return state
   }
