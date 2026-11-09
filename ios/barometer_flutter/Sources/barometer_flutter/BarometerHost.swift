@@ -9,9 +9,17 @@ struct HostCodeError: Error {
 /// Owns the native client of one Flutter engine and runs the channel calls against it.
 ///
 /// Nothing happens at construction: the worker queue is created by the first call, and the record
-/// store and facade client are created by `initialize`, which reads the trusted local document
-/// from the application bundle. `close` closes the client, then the store. Every facade call runs
-/// on a worker thread, never on the main thread, and its answer is delivered on the main queue.
+/// store and facade client are created by `initialize`, which takes the trusted local document
+/// from the host policy adapter `policy`. `close` closes the client, then the store. Every facade
+/// call runs on a worker thread, never on the main thread, and its answer is delivered on the
+/// main queue.
+///
+/// Every `initialize` reads the document again. When it differs from the active one, the call is
+/// a policy replacement by reinitialization: `HostPolicy.check` must accept its generation and the
+/// facade must accept the document while the active client stays open and untouched; then the
+/// active client is closed, which cancels its runs and invalidates its task and run handles and
+/// embedded deliveries, and a new client over the same record store is initialized. If closing
+/// fails, the new client is discarded and the active one is kept so that `close` can be retried.
 ///
 /// A failed `initialize` keeps the client it created, so the host can retry it or recover with
 /// `clearMeasurementData` after `clearing_incomplete`. A `close` that fails keeps the client too,
@@ -41,7 +49,6 @@ final class BarometerHost {
   private static let errClosed = "client_closed"
   private static let errNotInitialized = "not_initialized"
   private static let errDelivery = "delivery_unavailable"
-  private static let errTrust = "trust_invalid"
   private static let errStorage = "storage_unavailable"
   private static let terminal = "terminal"
 
@@ -49,12 +56,14 @@ final class BarometerHost {
   static let expiryBoundMillis = 2_000
 
   private let bundle: Bundle
+  private let policy: HostPolicy
   private let openStore: () throws -> RecordStore
   private let lock = NSLock()
   private var workers: OperationQueue?
   private var detached = false
   private var store: RecordStore?
   private var client: BarometerClient?
+  private var active: HostPolicy.Document?
   private var embeddedIssuer: String?
 
   private let background: BackgroundTasks
@@ -67,14 +76,17 @@ final class BarometerHost {
   private var task: (token: Int, id: Int?)?
   private var nextToken = 0
 
-  /// `bundle` holds the trusted local document and the embedded tasks; `openStore` opens the
-  /// record store; `background` grants background time to active runs. Tests replace them; the
-  /// plugin uses the application bundle, the `default` scope and `UIApplication`.
+  /// `bundle` holds the embedded tasks; `policy` supplies the trusted local document; `openStore`
+  /// opens the record store; `background` grants background time to active runs. Tests replace
+  /// them; the plugin uses the application bundle, the process's host policy adapter over it, the
+  /// `default` scope and `UIApplication`.
   init(
-    bundle: Bundle = .main, openStore: @escaping () throws -> RecordStore = { try RecordStore.open() },
+    bundle: Bundle = .main, policy: HostPolicy = .shared,
+    openStore: @escaping () throws -> RecordStore = { try RecordStore.open() },
     background: BackgroundTasks = AppleBackgroundTasks()
   ) {
     self.bundle = bundle
+    self.policy = policy
     self.openStore = openStore
     self.background = background
   }
@@ -198,33 +210,50 @@ final class BarometerHost {
     return nil
   }
 
-  /// Returns the client, creating the store and client on first use.
+  /// Returns the client for the current trusted local document: the open client when the
+  /// document is unchanged, otherwise a new client that replaces it, creating the store on first
+  /// use.
   private func openClient() throws -> BarometerClient {
     lock.lock()
     defer { lock.unlock() }
-    if let client { return client }
-    let trust: Data
-    do {
-      trust = try TrustDocument.read(bundle: bundle)
-    } catch {
-      throw HostCodeError(code: Self.errTrust)
-    }
+    let document = try policy.read()
+    let current = client
+    if let current, let active, document.sameAs(active) { return current }
+    try policy.check(document, active: current != nil ? active : nil)
+    // A replacement keeps the open client's record store.
+    let opened = current != nil ? store : nil
     let records: RecordStore
-    do {
-      records = try openStore()
-    } catch {
-      throw HostCodeError(code: Self.errStorage)
+    if let opened {
+      records = opened
+    } else {
+      do {
+        records = try openStore()
+      } catch {
+        throw HostCodeError(code: Self.errStorage)
+      }
     }
     let created: BarometerClient
     do {
-      created = try BarometerBinding.newClient(store: records, trust: trust)
+      created = try BarometerBinding.newClient(store: records, trust: document.bytes)
     } catch {
-      try? records.close()
+      if opened == nil { try? records.close() }
       throw error
+    }
+    if let current {
+      // The facade accepted the document: only now is the active client given up.
+      do {
+        try current.close()
+      } catch {
+        try? created.close()
+        throw error
+      }
+      untrackAll()
     }
     store = records
     client = created
-    embeddedIssuer = TrustDocument.embeddedIssuer(trust)
+    active = document
+    embeddedIssuer = TrustDocument.embeddedIssuer(document.bytes)
+    policy.activated(document)
     return created
   }
 
@@ -235,6 +264,7 @@ final class BarometerHost {
     if client != nil { untrackAll() }
     try client?.close()
     client = nil
+    active = nil
     embeddedIssuer = nil
     do {
       try store?.close()

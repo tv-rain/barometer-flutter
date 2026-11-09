@@ -19,7 +19,8 @@ final class ChannelTests: XCTestCase {
       .appendingPathComponent("channel-\(UUID().uuidString)", isDirectory: true)
     let base = self.base!
     let counter = mainCalls
-    host = BarometerHost(bundle: Bundle(for: Self.self)) {
+    let bundle = Bundle(for: Self.self)
+    host = BarometerHost(bundle: bundle, policy: HostPolicy(bundle: bundle)) {
       try RecordStore.open(base: base, scope: Self.scope) {
         let main = Thread.isMainThread
         if main { counter.increment() }
@@ -252,7 +253,8 @@ final class ChannelTests: XCTestCase {
 
   func testMissingTrustDocumentIsTrustInvalid() {
     let base = self.base!
-    let bare = BarometerHost(bundle: Bundle(for: XCTestCase.self)) {
+    let empty = Bundle(for: XCTestCase.self)
+    let bare = BarometerHost(bundle: empty, policy: HostPolicy(bundle: empty)) {
       try RecordStore.open(base: base, scope: "bare", isMainThread: { Thread.isMainThread })
     }
     let done = expectation(description: "initialize")

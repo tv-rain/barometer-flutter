@@ -15,6 +15,11 @@
 		D0A72A0B2F00000000000001 /* ChannelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0A72A0A2F00000000000001 /* ChannelTests.swift */; };
 		D0A72B0B2F00000000000001 /* TestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0A72B0A2F00000000000001 /* TestSupport.swift */; };
 		D0A72C0B2F00000000000001 /* LifecycleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0A72C0A2F00000000000001 /* LifecycleTests.swift */; };
+		D0A72E0B2F00000000000001 /* PolicyTestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0A72E0A2F00000000000001 /* PolicyTestSupport.swift */; };
+		D0A72E1B2F00000000000001 /* HostPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0A72E1A2F00000000000001 /* HostPolicyTests.swift */; };
+		D0A72E2B2F00000000000001 /* LocalPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0A72E2A2F00000000000001 /* LocalPolicyTests.swift */; };
+		D0A72E3B2F00000000000001 /* ProxyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0A72E3A2F00000000000001 /* ProxyTests.swift */; };
+		D0A72E4B2F00000000000001 /* RemoteTaskTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0A72E4A2F00000000000001 /* RemoteTaskTests.swift */; };
 		D0A72D0B2F00000000000001 /* LinkageKeysTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0A72D0A2F00000000000001 /* LinkageKeysTests.swift */; };
 		D0A7290D2F00000000000001 /* barometer in Resources */ = {isa = PBXBuildFile; fileRef = D0A7290C2F00000000000001 /* barometer */; };
 		3B3967161E833CAA004F5970 /* AppFrameworkInfo.plist in Resources */ = {isa = PBXBuildFile; fileRef = 3B3967151E833CAA004F5970 /* AppFrameworkInfo.plist */; };
@@ -60,6 +65,11 @@
 		D0A72A0A2F00000000000001 /* ChannelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelTests.swift; sourceTree = "<group>"; };
 		D0A72B0A2F00000000000001 /* TestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestSupport.swift; sourceTree = "<group>"; };
 		D0A72C0A2F00000000000001 /* LifecycleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LifecycleTests.swift; sourceTree = "<group>"; };
+		D0A72E0A2F00000000000001 /* PolicyTestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PolicyTestSupport.swift; sourceTree = "<group>"; };
+		D0A72E1A2F00000000000001 /* HostPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostPolicyTests.swift; sourceTree = "<group>"; };
+		D0A72E2A2F00000000000001 /* LocalPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalPolicyTests.swift; sourceTree = "<group>"; };
+		D0A72E3A2F00000000000001 /* ProxyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProxyTests.swift; sourceTree = "<group>"; };
+		D0A72E4A2F00000000000001 /* RemoteTaskTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteTaskTests.swift; sourceTree = "<group>"; };
 		D0A72D0A2F00000000000001 /* LinkageKeysTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LinkageKeysTests.swift; sourceTree = "<group>"; };
 		D0A7290C2F00000000000001 /* barometer */ = {isa = PBXFileReference; lastKnownFileType = folder; path = barometer; sourceTree = "<group>"; };
 		331C8081294A63A400263BE5 /* RunnerTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RunnerTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -117,6 +127,11 @@
 				D0A72A0A2F00000000000001 /* ChannelTests.swift */,
 				D0A72B0A2F00000000000001 /* TestSupport.swift */,
 				D0A72C0A2F00000000000001 /* LifecycleTests.swift */,
+				D0A72E0A2F00000000000001 /* PolicyTestSupport.swift */,
+				D0A72E1A2F00000000000001 /* HostPolicyTests.swift */,
+				D0A72E2A2F00000000000001 /* LocalPolicyTests.swift */,
+				D0A72E3A2F00000000000001 /* ProxyTests.swift */,
+				D0A72E4A2F00000000000001 /* RemoteTaskTests.swift */,
 				D0A72D0A2F00000000000001 /* LinkageKeysTests.swift */,
 				D0A7290C2F00000000000001 /* barometer */,
 			);
@@ -430,6 +445,11 @@
 				D0A72A0B2F00000000000001 /* ChannelTests.swift in Sources */,
 				D0A72B0B2F00000000000001 /* TestSupport.swift in Sources */,
 				D0A72C0B2F00000000000001 /* LifecycleTests.swift in Sources */,
+				D0A72E0B2F00000000000001 /* PolicyTestSupport.swift in Sources */,
+				D0A72E1B2F00000000000001 /* HostPolicyTests.swift in Sources */,
+				D0A72E2B2F00000000000001 /* LocalPolicyTests.swift in Sources */,
+				D0A72E3B2F00000000000001 /* ProxyTests.swift in Sources */,
+				D0A72E4B2F00000000000001 /* RemoteTaskTests.swift in Sources */,
 				D0A72D0B2F00000000000001 /* LinkageKeysTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

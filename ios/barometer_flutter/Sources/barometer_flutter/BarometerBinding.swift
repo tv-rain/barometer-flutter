@@ -23,8 +23,12 @@ enum BarometerBinding {
   /// document `trust`, which must come from `TrustDocument`. It starts the network path monitor
   /// and performs no other work; nothing is measured until the lifecycle calls. The linkage key
   /// store of the store's scope is installed (`AppleLinkageKeys`); it creates no key until linkage
-  /// needs one, and clearing deletes its key and sentinel.
-  static func newClient(store: RecordStore, trust: Data) throws -> BarometerClient {
+  /// needs one, and clearing deletes its key and sentinel. `device` reads the battery state for
+  /// the `Device` port; tests replace it, the plugin uses `AppleDevice`.
+  static func newClient(
+    store: RecordStore, trust: Data,
+    device: @escaping (Int64) -> BatterySnapshot = { AppleDevice().state(timeoutMillis: $0) }
+  ) throws -> BarometerClient {
     let network = AppleNetwork()
     let keys = AppleLinkageKeys(store)
     let adapters = BarometermobileAdapters()
@@ -32,7 +36,7 @@ enum BarometerBinding {
     adapters.clock = ClockCallback(AppleClock())
     adapters.network = NetworkCallback(network)
     adapters.consent = ConsentCallback(AppleConsent())
-    adapters.device = DeviceCallback(AppleDevice())
+    adapters.device = DeviceCallback(device)
     adapters.timeZone = TimeZoneCallback(AppleTimeZone())
     adapters.resolver = ResolverCallback(AppleResolver())
     adapters.linkageKeys = LinkageCallback(keys)
@@ -165,14 +169,14 @@ private final class ConsentCallback: NSObject, BarometermobileConsentProtocol {
 }
 
 private final class DeviceCallback: NSObject, BarometermobileDeviceProtocol {
-  private let device: AppleDevice
+  private let device: (Int64) -> BatterySnapshot
 
-  init(_ device: AppleDevice) {
+  init(_ device: @escaping (Int64) -> BatterySnapshot) {
     self.device = device
   }
 
   func state(_ timeoutMillis: Int64) throws -> BarometermobileDeviceState {
-    let s = device.state(timeoutMillis: timeoutMillis)
+    let s = device(timeoutMillis)
     guard
       let state = BarometermobileNewDeviceState(s.percent, s.percentKnown, s.charging, s.chargingKnown)
     else { throw AdapterUnavailableError() }
