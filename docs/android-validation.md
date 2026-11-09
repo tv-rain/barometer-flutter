@@ -23,7 +23,40 @@ slices:
 status: compiled only; not a release, not platform support
 ```
 
-[Durability, Full Disk and the Nine Measurements](#durability-full-disk-and-the-nine-measurements), [Host Policy, Proxy and Signed Remote Tasks](#host-policy-proxy-and-signed-remote-tasks) and [Signals, Lifecycle and Linkage Keys](#signals-lifecycle-and-linkage-keys) were recorded with this library. [Trust Roots Inside the Application](#trust-roots-inside-the-application) was recorded at the earlier pin `d7a5440ef35accc89a16a3074c586fa3d9f0308a`, and the sections after it at `c49695c9406d64d34d247de827ae2b0343634640` and, where they say so, `52789565c85f9d14d7b2ce1d5e42f85b11cea753`; their build-info differs from the one above only in the `commit` line.
+[Reinstall and Backup](#reinstall-and-backup), [Durability, Full Disk and the Nine Measurements](#durability-full-disk-and-the-nine-measurements), [Host Policy, Proxy and Signed Remote Tasks](#host-policy-proxy-and-signed-remote-tasks) and [Signals, Lifecycle and Linkage Keys](#signals-lifecycle-and-linkage-keys) were recorded with this library. [Trust Roots Inside the Application](#trust-roots-inside-the-application) was recorded at the earlier pin `d7a5440ef35accc89a16a3074c586fa3d9f0308a`, and the sections after it at `c49695c9406d64d34d247de827ae2b0343634640` and, where they say so, `52789565c85f9d14d7b2ce1d5e42f85b11cea753`; their build-info differs from the one above only in the `commit` line.
+
+## Reinstall and Backup
+
+Run on 2026-11-09 with the library above on emulators started headless (`-no-window`, cold boot). `ReinstallBackupDeviceTest` and `scripts/android-reinstall-backup-check.sh` ([README](../README.md#build-and-validate)) check the linkage key, its sentinel and the records of the plugin's test application, which targets API 35 and allows backup by default. The seed runs TCP-01 to `1.1.1.1:443` once with rotating linkage, which leaves records, a pending bundle, the Keystore key and the sentinel, and writes a control file in the backed-up files directory; it reports the SHA-256 of the key's HMAC of a fixed synthetic message, which the host passes to the verification and does not keep. The verification checks that the control file is present after a restore and absent after a reinstall, that no Barometer file is present under the `no_backup` directory and no key under the scope's alias, that initializing with linkage on finds no pending bundle and creates no key, and that the first derivation gives another HMAC than the seed's key, so the earlier key is not used again. No result or derived value was printed or recorded.
+
+| Target | Build fingerprint | OS | ABI |
+|---|---|---|---|
+| Emulator, `system-images;android-21;default;arm64-v8a` | `generic_arm64/sdk_phone_arm64/generic_arm64:5.0.2/LSY66K/8789838:eng/test-keys` | Android 5.0.2 (API 21) | `arm64-v8a` |
+| Emulator, `system-images;android-24;default;arm64-v8a` | `Android/sdk_phone_arm64/generic_arm64:7.0/NYC/8695085:userdebug/test-keys` | Android 7.0 (API 24) | `arm64-v8a` |
+| Emulator, `system-images;android-35;default;arm64-v8a` | `Android/sdk_phone64_arm64/emu64a:15/AE3A.240806.019/12368160:userdebug/test-keys` | Android 15 (API 35) | `arm64-v8a` |
+
+| Check | API 24 | API 35 |
+|---|---|---|
+| `reinstall`: `adb uninstall` and `adb install` between seed and verification | Passed | Passed |
+| `reinstall --control`: the same without the reinstall; the verification must fail | Failed as expected | Failed as expected |
+| `adb-backup`: `adb backup -noapk` of the application, confirmed on the emulator's screen; the archive lists `_manifest`, `r/app_dxmaker_cache` and `f/backup-control`, and nothing from the `no_backup` directory | Passed | Passed |
+| `adb-backup`, restore into a fresh installation: uninstall, install, `adb restore` | Passed | Passed |
+| `adb-backup`, restore into the existing installation after a new seed: the restore cleared the application's data, the `no_backup` directory and the Keystore key with it, before restoring the control file | Passed | Passed |
+| `bmgr`: `bmgr backupnow` through `com.android.localtransport/.LocalTransport`; the transport's copy, read as root, lists the same three entries; uninstall, install with automatic restore off, `bmgr restore <token> <package>` | Not available: the image has no backup transport | Passed |
+
+The backups held the control file and no record, sentinel, reserve, lock or other Barometer file: the record store and the sentinel live under `Context.getNoBackupFilesDir()`, which Android leaves out of both full-data backup paths, and Keystore keys are not part of any backup. A restored application therefore found neither a key nor a sentinel, and its first derivation created a new key. A Keystore key present without its sentinel, which no path here produced, is replaced before use (`LinkageKeysDeviceTest.aKeyWithoutTheSentinelIsReplacedBeforeUse`). No backup exclusion had to be added. API 21 has no linkage key, so the script refuses it; its records use the same `no_backup` directory.
+
+**API 21 rerun.** `./gradlew :barometer_flutter:connectedDebugAndroidTest` from `example/android` on the API 21 emulator, freshly started: 48 tests, 34 passed, 14 skipped, none failed. The passing ones include `AdapterDeviceTest` (6), `RecordStoreDeviceTest` (7), `ChannelDeviceTest` (4), `TrustRootDeviceTest` in its `platform` scenario, `NetworkSignalDeviceTest` (at rest and the test VPN), `ClearDataDeviceTest` (2), `LifecycleDeviceTest` (2), `LocalPolicyDeviceTest` (2), `PolicyReplacementDeviceTest`, `ProxyDeviceTest` (2), `RemoteTaskDeviceTest` (2), `DurabilityDeviceTest` and `StorageFullDeviceTest`. Skipped, because they cannot run on API 21:
+
+- `LinkageKeysDeviceTest`, 6 of 7 tests, and `ClearDataDeviceTest.anInterruptedClearIsIncompleteUntilCompleted`: Android Keystore holds no HMAC key before API 23; `noKeyStoreBeforeApi23` passed.
+- `NetworkSignalDeviceTest.deviceIdleIsSuspension`: no device idle before API 23.
+- `NetworkSignalDeviceTest.wifiOffAndOnChangesTheDefaultNetwork`: the image has no Wi-Fi.
+- `NetworkSignalDeviceTest.airplaneModeRemovesTheNetworkAndRestoresIt`: the shell user cannot switch airplane mode before API 30; the host script below ran it.
+- `ClearStorageDeviceTest` (2) and `ReinstallBackupDeviceTest` (2): phases that only the host scripts run.
+
+On the same emulator `scripts/android-airplane-check.sh` and `scripts/android-clear-storage-check.sh` passed and `scripts/android-clear-storage-check.sh --control` failed as expected. `TrustRootDeviceTest` was run in its `platform` scenario only, as on API 24 before; the other trust scenarios were not run on API 21.
+
+These are emulator runs. Device-to-device migration, a vendor backup transport and hardware-backed keys remain the deferred device checks AD-07 and AD-08 of the [deferred device checks](https://github.com/tv-rain/barometer/blob/main/docs/device-checks.md).
 
 ## Durability, Full Disk and the Nine Measurements
 
@@ -126,7 +159,7 @@ Host scripts, run against each emulator with the same library:
 
 The example's integration test (`flutter test integration_test -d <emulator>` in `example`, Flutter 3.47.6) passed on the API 35 emulator with this library. Its trusted local document now lists the two embedded tasks as release-reviewed by the digests of the bytes the build wrote, which this pin requires for an embedded task without `not_after`.
 
-The instrumentation's shell user cannot switch airplane mode before API 30, or run `su`, so those levels need the host script. On API 21 the platform remembers VPN consent by package name: after a reinstall, which changes the test application's user ID, it reports the permission as granted but does not establish the VPN until the emulator restarts, so the API 21 row was run on a freshly started emulator. These are emulator runs: real radios, vendor power management and hardware-backed keys remain the deferred device checks AD-05, AD-06 and AD-08 of the [deferred device checks](https://github.com/tv-rain/barometer/blob/main/docs/device-checks.md). Uninstall and reinstall, backup and restore and device-to-device migration of the key were not run.
+The instrumentation's shell user cannot switch airplane mode before API 30, or run `su`, so those levels need the host script. On API 21 the platform remembers VPN consent by package name: after a reinstall, which changes the test application's user ID, it reports the permission as granted but does not establish the VPN until the emulator restarts, so the API 21 row was run on a freshly started emulator. These are emulator runs: real radios, vendor power management and hardware-backed keys remain the deferred device checks AD-05, AD-06 and AD-08 of the [deferred device checks](https://github.com/tv-rain/barometer/blob/main/docs/device-checks.md). Uninstall and reinstall and backup and restore of the key were run later ([Reinstall and Backup](#reinstall-and-backup)); device-to-device migration was not run.
 
 ## Trust Roots Inside the Application
 
@@ -198,4 +231,4 @@ The API 21 run covers the native library alone: it runs the plugin's own test AP
 - **Probe build on API 21.** A probe linked by Go's internal linker (`CGO_ENABLED=0`) crashed at start on the API 21 emulator; one built with the NDK `aarch64-linux-android21-clang` ran. The gomobile library is built with the NDK and loaded on API 21 in the instrumented tests.
 - **Network on API 21 to 22.** The platform has no active-network handle there. The adapter reads IPv4 and IPv6 from the single connected network of the active type and reports them `unknown` otherwise, which fails closed for TCP-01.
 - **Resolver.** An unknown name is reported as `resolver_error`, never `no_data`, because the platform does not separate it from a resolver failure before API 29. A lookup abandoned at its deadline keeps its worker thread until the platform returns.
-- **Not covered.** Any physical device (see above); power loss; uninstall and reinstall, backup and restore and device-to-device migration of linkage keys; the Dart API on API 21 to 23 and 25 to 34. The umbrella build ran on API 24 and 35 emulators only ([Durability, Full Disk and the Nine Measurements](#durability-full-disk-and-the-nine-measurements)). The `x86_64` slice has run only the example's integration test in CI. The VPN, validation, captive-portal and suspension signals, lifecycle and cancellation and the protected linkage keys ran on emulators only ([Signals, Lifecycle and Linkage Keys](#signals-lifecycle-and-linkage-keys)).
+- **Not covered.** Any physical device (see above); power loss; device-to-device migration of linkage keys and a vendor backup transport (uninstall and reinstall and backup and restore through `adb` and the local transport ran on emulators, [Reinstall and Backup](#reinstall-and-backup)); the Dart API on API 21 to 23 and 25 to 34. The umbrella build ran on API 24 and 35 emulators only ([Durability, Full Disk and the Nine Measurements](#durability-full-disk-and-the-nine-measurements)). The `x86_64` slice has run only the example's integration test in CI. The VPN, validation, captive-portal and suspension signals, lifecycle and cancellation and the protected linkage keys ran on emulators only ([Signals, Lifecycle and Linkage Keys](#signals-lifecycle-and-linkage-keys)).
