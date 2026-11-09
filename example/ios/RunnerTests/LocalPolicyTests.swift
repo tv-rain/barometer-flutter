@@ -3,9 +3,9 @@ import XCTest
 
 @testable import barometer_flutter
 
-/// The local restriction inputs of the trusted local document on the simulator, through the facade
-/// with the Apple adapters. The `device` member gates runs on the battery state of the `Device`
-/// port: the simulator's own `UIDevice` reading and battery states the test sets through the
+/// The local restriction inputs of the trusted local document, through the facade with the Apple
+/// adapters. The `device` member gates runs on the battery state of the `Device` port: the
+/// simulator's or device's own `UIDevice` reading and battery states the test sets through the
 /// port's source. The `network_context` member keeps Network Context acquisition off a path it
 /// does not list, while the same configuration without it acquires there. Attempts take the proxy
 /// path through a loopback proxy that never contacts a target or the context endpoint, so the
@@ -118,24 +118,26 @@ final class LocalPolicyTests: XCTestCase {
   func testDeviceConstraintsGateRuns() throws {
     let proxy = try newProxy()
     let control = try newProxy()
+    let production = try newProxy()
     let constrained = try document {
       $0["device"] = ["minimum_battery_percent": 50, "charging_only": true]
     }
     let free = try document()
-    // The simulator's own battery reading, recorded only as known or unknown.
+    // The simulator's or device's own battery reading, recorded only as known or unknown.
     var reading = AppleDevice.unknown
     runOffMain { reading = AppleDevice().state(timeoutMillis: 2000) }
     let battery = Battery()
     runOffMain {
-      // With the production device source, the run proceeds only if the simulator reports a
-      // battery state that meets the constraint; an unknown state never does.
-      let simulator = try self.newClient(constrained, proxy)
-      let simulated = self.code { _ = try simulator.startRun(try self.admit(simulator, "device-simulator")) }
+      // With the production device source, the run proceeds only if the simulator or device
+      // reports a battery state that meets the constraint; an unknown state never does. A run
+      // that proceeds is completed and acknowledged, so it leaves no bundle behind.
+      let own = try self.newClient(constrained, production)
+      let ownTask = try self.admit(own, "device-own")
       let meets = reading.percentKnown && reading.percent >= 50 && reading.chargingKnown && reading.charging
       if meets {
-        XCTAssertNil(simulated)
+        XCTAssertEqual(self.state(try self.run(own, ownTask)), "completed")
       } else {
-        XCTAssertEqual(simulated, "run_not_due")
+        XCTAssertEqual(self.code { _ = try own.startRun(ownTask) }, "run_not_due")
       }
       self.closeClients()
 
@@ -157,7 +159,7 @@ final class LocalPolicyTests: XCTestCase {
       let unconstrained = try self.newClient(free, control) { _ in battery.value }
       XCTAssertEqual(self.state(try self.run(unconstrained, try self.admit(unconstrained, "device-free"))), "completed")
     }
-    print("simulator battery: percent \(reading.percentKnown ? "known" : "unknown"), charging \(reading.chargingKnown ? "known" : "unknown")")
+    print("own battery: percent \(reading.percentKnown ? "known" : "unknown"), charging \(reading.chargingKnown ? "known" : "unknown")")
   }
 
   func testContextEligibilityKeepsAcquisitionOffUnlistedPaths() throws {

@@ -89,7 +89,7 @@ cd example
 flutter test integration_test -d <device-id>
 ```
 
-### Measurement Fixtures (Android)
+### Measurement Fixtures
 
 `example/barometer-fixtures/` holds a second synthetic set for evidence runs only: a trusted local document and nine one-time embedded tasks, one for each registered measurement (TCP-01, DNS-01, DNS-03, DNS-04, TLS-01, HTTP-01, NET-01, NET-03 and NET-05), all on the direct path. Every remote target is the public literal `8.8.8.8` or the name `fixture.example.org` bootstrapped to it, and DNS queries ask for `example.org`. `scripts/android-measurement-fixtures.sh start` prepares one emulator for them: it generates a CA and a server certificate for `fixture.example.org` and `8.8.8.8` (the CA's private key is deleted once the certificate is issued), starts `scripts/measurement_fixtures.py` on the host's loopback interface (DNS over UDP and TCP, HTTP, HTTPS with a DNS-over-HTTPS endpoint, and DNS over TLS, all with fixed synthetic answers), makes the CA the emulator's only trust root through `scripts/android-trust-scenario.sh`, and adds packet-filter rules that send the emulator's TCP and UDP traffic for `8.8.8.8` on ports 53, 80, 443 and 853 to the host and reject any other traffic for that address, so no task contacts it. `stop` undoes all of it. The fixtures serve one emulator at a time. `example/integration_test/measurements_test.dart` then runs the nine tasks from Dart and checks each result's execution state, observation types and outcome; it is skipped unless the build carries the fixture set:
 
@@ -103,6 +103,17 @@ cd .. && bash scripts/android-measurement-fixtures.sh stop
 ```
 
 Add `ORG_GRADLE_PROJECT_barometerUmbrellaArtifact` and `ORG_GRADLE_PROJECT_barometerUmbrellaRepository` for the umbrella build. The fixture set is never part of an ordinary build: `barometerExampleAssets` accepts only `barometer` (the default) and `barometer-fixtures`.
+
+On iOS, a simulator or an iPhone cannot be redirected like an emulator, and Barometer accepts only public targets, so `scripts/ios-measurement-fixtures.sh start [simulator-udid]` serves the fixtures on the host's own stable global IPv6 address instead: it generates the CA and a certificate for `fixture.example.org` and that address, starts `scripts/measurement_fixtures.py` on the standard ports of every IPv6 address of the host, answering only peers of the host's on-link IPv6 prefix, and, given a simulator, adds the CA to that simulator's trust store. The **Generate Barometer Resources** build phase takes the fixture set when `BAROMETER_EXAMPLE_ASSETS=barometer-fixtures`, and writes `BAROMETER_FIXTURE_ADDRESS` in place of `8.8.8.8` in its tasks and trusted local document. The address is the host's; use it for the run only and do not record it. iOS has no network-validation source, so NET-05 ends `inconclusive` there; the test expects that. An iPhone reaches the host only if the example may use the local network, which iOS asks the user to allow, and trusts the CA only if the user installs and fully trusts it; `--dart-define=BAROMETER_FIXTURE_CHECK=shape` checks only each task's lifecycle and result shape for such a run:
+
+```sh
+bash scripts/ios-measurement-fixtures.sh start <simulator-udid>   # prints the fixture address
+cd example
+BAROMETER_EXAMPLE_ASSETS=barometer-fixtures BAROMETER_FIXTURE_ADDRESS=<address> \
+  flutter test integration_test/measurements_test.dart -d <simulator-udid> \
+  --dart-define=BAROMETER_MEASUREMENT_FIXTURES=true
+cd .. && bash scripts/ios-measurement-fixtures.sh stop
+```
 
 ## Channel Contract
 
@@ -181,7 +192,7 @@ export BAROMETER_FLUTTER_UMBRELLA_MODULE=<module name of the umbrella framework>
 flutter build ios --debug --simulator
 ```
 
-The Gradle properties can also be passed as `ORG_GRADLE_PROJECT_barometerUmbrellaArtifact` and `ORG_GRADLE_PROJECT_barometerUmbrellaRepository`, which `flutter test integration_test` also honors. Umbrella mode has been built and its integration test run locally on an Android emulator, an iOS simulator and an iPhone against an umbrella artifact that binds `barometermobile` with other Go packages, and the measurement integration test on API 24 and API 35 emulators. The device build workflow builds the example in umbrella mode with the standalone library standing in for the umbrella artifact, and runs tests in standalone mode only.
+The Gradle properties can also be passed as `ORG_GRADLE_PROJECT_barometerUmbrellaArtifact` and `ORG_GRADLE_PROJECT_barometerUmbrellaRepository`, which `flutter test integration_test` also honors. Umbrella mode has been built and its integration test run locally on an Android emulator, an iOS simulator and an iPhone against an umbrella artifact that binds `barometermobile` with other Go packages, and the measurement integration test on API 24 and API 35 emulators, an iOS simulator and an iPhone. The device build workflow builds the example in umbrella mode with the standalone library standing in for the umbrella artifact, and runs tests in standalone mode only.
 
 ## Android State Storage
 
@@ -195,7 +206,7 @@ A reinstall sentinel, the non-secret file `linkage-sentinel` in the scope's dire
 
 ## Apple State Storage
 
-The Apple backend of the `Records` port (`RecordStore.swift`) has the same semantics as the Android one: one file per record, temporary-file-and-rename writes, arrival-order calls on one serial queue bounded by `timeoutMillis`, withdrawal of calls still queued at their deadline or at close, refusal of other puts while a clearing marker is stored, one owner per scope (an in-process registry and a `flock` that also refuses other processes) and failure instead of blocking on the main thread. Records live under the application's own `Library/Application Support/barometer/<scope>/records`, never in a shared or app-group container, and the `barometer`, scope and records directories are marked `isExcludedFromBackup`, so they stay out of iCloud and device backups. Files keep the platform's default data-protection class. A key the store does not hold reaches the facade as `BarometermobileNewAbsentRecordValue()`, because Swift cannot return nil from the generated throwing `get`. Uninstalling the application removes the container and the records with it; `scripts/ios-reinstall-check.sh` checks on a simulator that no record survives an uninstall and reinstall. Durability across power loss or a full disk and backup and restore are not yet validated.
+The Apple backend of the `Records` port (`RecordStore.swift`) has the same semantics as the Android one: one file per record, temporary-file-and-rename writes, arrival-order calls on one serial queue bounded by `timeoutMillis`, withdrawal of calls still queued at their deadline or at close, refusal of other puts while a clearing marker is stored, one owner per scope (an in-process registry and a `flock` that also refuses other processes) and failure instead of blocking on the main thread. Records live under the application's own `Library/Application Support/barometer/<scope>/records`, never in a shared or app-group container, and the `barometer`, scope and records directories are marked `isExcludedFromBackup`, so they stay out of iCloud and device backups. Files keep the platform's default data-protection class. A key the store does not hold reaches the facade as `BarometermobileNewAbsentRecordValue()`, because Swift cannot return nil from the generated throwing `get`. A put that fails on a full disk leaves the earlier value. Each scope's directory also holds `clearing.reserve`, 256 KiB of zero bytes that a put of a clearing marker deletes first, committing the deletion with `F_FULLFSYNC` on the scope directory, so that clearing can store its marker and complete on a full disk; the reserve is allocated again when no marker is stored or the scope is opened, if space allows. Uninstalling the application removes the container and the records with it; `scripts/ios-reinstall-check.sh` checks on a simulator that no record survives an uninstall and reinstall. Process kill during writes and during a run is checked on an iPhone and simulators, and a full disk on a simulator ([Apple validation record](docs/apple-validation.md#durability-storage-full-and-the-nine-measurements)); durability across power loss and backup and restore are not yet validated.
 
 ## Apple Linkage Keys
 
@@ -324,12 +335,15 @@ bash scripts/android-reinstall-backup-check.sh adb-backup   # adb backup and res
 bash scripts/android-reinstall-backup-check.sh bmgr   # bmgr through the local transport, as root; exit 3 without one
 ```
 
-On iOS the XCTests run from `example/ios` with `xcodebuild test -workspace Runner.xcworkspace -scheme Runner -destination 'platform=iOS Simulator,id=<udid>' -only-testing:RunnerTests` after `flutter build ios --debug --simulator`. Two scripts drive what a single test process cannot do, on simulators only:
+On iOS the XCTests run from `example/ios` with `xcodebuild test -workspace Runner.xcworkspace -scheme Runner -destination 'platform=iOS Simulator,id=<udid>' -only-testing:RunnerTests` after `flutter build ios --debug --simulator`, or on a connected device with `-destination 'platform=iOS,id=<udid>'` and signing settings passed on the command line after `flutter build ios --debug --no-codesign`. Scripts drive what a single test process cannot do:
 
 ```sh
-bash scripts/ios-record-store-kill-test.sh <udid> [rounds]   # process kill during record writes
-bash scripts/ios-reinstall-check.sh <udid> [--control]       # uninstall and reinstall; the control must fail
+bash scripts/ios-record-store-kill-test.sh <udid> [rounds] [xcodebuild-arg...]   # process kill during writes and during a run; simulator or device
+bash scripts/ios-reinstall-check.sh <udid> [--control]       # uninstall and reinstall, simulators only; the control must fail
+bash scripts/ios-storage-full-check.sh <device-type> <runtime-id> [image-size]   # full disk, on a simulator it creates on a disk image
 ```
+
+`NetworkChangeDeviceTests` runs only on a device while a person switches Wi-Fi, airplane mode or a VPN, with `TEST_RUNNER_BAROMETER_NETWORK_CHANGE_TEST=<wait-seconds>,<window-seconds>` set for `xcodebuild`.
 
 The Swift store, adapter, channel, host policy, proxy and remote task XCTests run in `example/ios` on a simulator after the iOS simulator build, and a script checks the store's atomicity under process kill. CI does not run them. The channel, host policy, proxy and remote task tests contact no network: their tasks run only on the proxy path through loopback proxies in the test process, which never open a connection onward. The adapter tests contact `1.1.1.1:443` and resolve `example.org` once each:
 

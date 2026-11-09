@@ -1,10 +1,13 @@
-"""Synthetic measurement fixtures for the Android emulator runs of the nine
+"""Synthetic measurement fixtures for the emulator and iOS runs of the nine
 registered measurements.
 
 Started by scripts/android-measurement-fixtures.sh, which redirects the
 emulator's traffic for the fixture address to these listeners on the host's
-loopback interface (the emulator reaches it as 10.0.2.2). Every listener
-answers with fixed synthetic content and records nothing:
+loopback interface (the emulator reaches it as 10.0.2.2), or by
+scripts/ios-measurement-fixtures.sh, which serves them on the host's global
+IPv6 address on the standard ports and answers only peers of the host's own
+on-link prefix. Every listener answers with fixed synthetic content and
+records nothing:
 
   DNS   UDP and TCP: an A query is answered with the fixture address, any other
         query with an empty answer.
@@ -15,7 +18,13 @@ answers with fixed synthetic content and records nothing:
   DoT   one length-prefixed DNS exchange over TLS.
 
 Usage: python3 measurement_fixtures.py --cert leaf.pem --key leaf-key.pem
-       --address 8.8.8.8 [--dns PORT] [--http PORT] [--https PORT] [--dot PORT]
+       --address 8.8.8.8 [--answer IPV4] [--listen HOST] [--allow NETWORK ...]
+       [--dns PORT] [--http PORT] [--https PORT] [--dot PORT]
+
+--answer is the IPv4 address of every A answer (the fixture address when that
+is IPv4). --listen "::" listens on every IPv6 address; --allow then limits the
+peers that are answered to the given networks, and any other peer is closed
+without an answer.
 """
 
 import argparse
@@ -108,23 +117,54 @@ def http_response(status: str, body: bytes = b"", content_type: str = "text/plai
 
 class Fixtures:
     def __init__(self, args):
-        self.address = ipaddress.IPv4Address(args.address).packed
+        fixture = ipaddress.ip_address(args.address)
+        answer = args.answer or (str(fixture) if fixture.version == 4 else None)
+        if answer is None:
+            raise SystemExit("--answer is required with an IPv6 fixture address")
+        self.address = ipaddress.IPv4Address(answer).packed
+        self.allow = [ipaddress.ip_network(n) for n in args.allow]
         self.tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         self.tls.minimum_version = ssl.TLSVersion.TLSv1_2
         self.tls.load_cert_chain(args.cert, args.key)
         self.tls.set_alpn_protocols(["http/1.1"])
         self.args = args
 
+    def allowed(self, peer) -> bool:
+        if not self.allow:
+            return True
+        address = ipaddress.ip_address(peer[0].split("%")[0])
+        return any(address in network for network in self.allow)
+
     def serve(self):
         fixtures = self
+        host = self.args.listen
+        family = socket.AF_INET6 if ":" in host else socket.AF_INET
 
         class Threaded(socketserver.ThreadingMixIn, socketserver.TCPServer):
+            address_family = family
             allow_reuse_address = True
             daemon_threads = True
 
+            def server_bind(self):
+                if family == socket.AF_INET6:
+                    self.socket.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
+                super().server_bind()
+
+            def verify_request(self, request, client_address):
+                return fixtures.allowed(client_address)
+
         class UDPThreaded(socketserver.ThreadingMixIn, socketserver.UDPServer):
+            address_family = family
             allow_reuse_address = True
             daemon_threads = True
+
+            def server_bind(self):
+                if family == socket.AF_INET6:
+                    self.socket.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 1)
+                super().server_bind()
+
+            def verify_request(self, request, client_address):
+                return fixtures.allowed(client_address)
 
         class DNSUDP(socketserver.BaseRequestHandler):
             def handle(self):
@@ -154,11 +194,11 @@ class Fixtures:
                     fixtures.dns_stream(conn)
 
         servers = [
-            UDPThreaded((HOST, self.args.dns), DNSUDP),
-            Threaded((HOST, self.args.dns), DNSTCP),
-            Threaded((HOST, self.args.http), HTTP),
-            Threaded((HOST, self.args.https), HTTPS),
-            Threaded((HOST, self.args.dot), DoT),
+            UDPThreaded((host, self.args.dns), DNSUDP),
+            Threaded((host, self.args.dns), DNSTCP),
+            Threaded((host, self.args.http), HTTP),
+            Threaded((host, self.args.https), HTTPS),
+            Threaded((host, self.args.dot), DoT),
         ]
         for server in servers:
             threading.Thread(target=server.serve_forever, daemon=True).start()
@@ -222,6 +262,9 @@ def main():
     parser.add_argument("--cert", required=True)
     parser.add_argument("--key", required=True)
     parser.add_argument("--address", required=True)
+    parser.add_argument("--answer")
+    parser.add_argument("--listen", default=HOST)
+    parser.add_argument("--allow", action="append", default=[])
     parser.add_argument("--dns", type=int, default=10053)
     parser.add_argument("--http", type=int, default=10080)
     parser.add_argument("--https", type=int, default=10443)
