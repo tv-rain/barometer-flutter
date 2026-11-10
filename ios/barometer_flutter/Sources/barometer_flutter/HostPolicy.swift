@@ -93,17 +93,14 @@ final class HostPolicy {
     highest = document
   }
 
-  /// The `policy.generation` of `document`, or nil when it is not a JSON object with a positive
-  /// integer generation. The facade validates the rest.
+  /// The `policy.generation` of `document`, or nil when it is not a strict JSON object with an
+  /// integer generation in the facade's range 1 to 2^63-1. The document is read with `StrictJSON`
+  /// under the facade's trusted-document bounds, so a repeated or escaped-equivalent member name,
+  /// an integer in another spelling (`-0`, `7.0`, `7e0`) or out of range, invalid UTF-8 or a
+  /// byte-order mark yields no generation, as the facade selects none; an escaped spelling of
+  /// `generation` is the same member. Unknown members are left to the facade, which rejects them.
   static func generation(_ document: Data) -> Int64? {
-    guard let root = try? JSONSerialization.jsonObject(with: document) as? [String: Any],
-      let policy = root["policy"] as? [String: Any],
-      let number = policy["generation"] as? NSNumber
-    else { return nil }
-    // JSON booleans and fractions also arrive as NSNumber.
-    if CFGetTypeID(number) == CFBooleanGetTypeID() || CFNumberIsFloatType(number) { return nil }
-    let value = number.int64Value
-    guard value > 0, number == NSNumber(value: value) else { return nil }
-    return value
+    guard let root = try? StrictJSON.decode(document, limits: StrictJSON.trustDocument) else { return nil }
+    return root["policy"]?["generation"]?.integer(in: 1...Int64.max)
   }
 }

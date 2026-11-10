@@ -41,24 +41,26 @@ extension TrustDocument {
   /// remote packages; a keyless issuer can only be reached through an embedded delivery, so it is
   /// the document's embedded issuer. Zero or several keyless issuers leave the association
   /// undefined, and embedded tasks are then not installed. Call this only with a document the
-  /// facade has accepted, which has already been validated in full.
+  /// facade has accepted, which has already been validated in full. The document is read with
+  /// `StrictJSON`, so it can only select the members the facade selected.
   static func embeddedIssuer(_ document: Data) -> String? {
-    guard let root = try? JSONSerialization.jsonObject(with: document) as? [String: Any],
-      let policy = root["policy"] as? [String: Any],
-      let keys = policy["keys"] as? [Any],
-      let issuers = policy["issuers"] as? [Any]
+    guard let root = try? StrictJSON.decode(document, limits: StrictJSON.trustDocument),
+      let keys = root["policy"]?["keys"]?.array,
+      let issuers = root["policy"]?["issuers"]?.array
     else { return nil }
-    var keyed = Set<String>()
+    // Issuer identifiers compare by their exact bytes, as Go compares them.
+    var keyed = Set<[UInt8]>()
     for key in keys {
-      guard let id = (key as? [String: Any])?["issuer_id"] as? String else { return nil }
+      guard let id = key["issuer_id"]?.bytes else { return nil }
       keyed.insert(id)
     }
-    var keyless = Set<String>()
+    var keyless = Set<[UInt8]>()
     for issuer in issuers {
-      guard let id = (issuer as? [String: Any])?["issuer_id"] as? String else { return nil }
+      guard let id = issuer["issuer_id"]?.bytes else { return nil }
       if !keyed.contains(id) { keyless.insert(id) }
     }
-    return keyless.count == 1 ? keyless.first : nil
+    guard keyless.count == 1, let id = keyless.first else { return nil }
+    return String(decoding: id, as: UTF8.self)
   }
 }
 

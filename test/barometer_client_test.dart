@@ -93,13 +93,13 @@ void main() {
 
   test('nextBundle returns the exact bytes and the identifier', () async {
     final raw = Uint8List.fromList(
-      utf8.encode('{"bundle_id":"b1","results":[1.0]}'),
+      utf8.encode('{"bundle_id":"b1","results":[1]}'),
     );
     answers['nextBundle'] = (_) => raw;
     final bundle = await BarometerClient().nextBundle();
     expect(bundle!.id, 'b1');
     expect(bundle.bytes, raw);
-    expect(bundle.toJson()['results'], [1.0]);
+    expect(bundle.toJson()['results'], [1]);
     expect(calls.single.arguments, isNull);
   });
 
@@ -113,6 +113,104 @@ void main() {
       BarometerClient().nextBundle(),
       throwsA(_code('native_error')),
     );
+  });
+
+  test('nextBundle reads the identifier as the Go library does', () async {
+    Future<String?> id(String json) async {
+      answers['nextBundle'] = (_) => Uint8List.fromList(utf8.encode(json));
+      try {
+        return (await BarometerClient().nextBundle())!.id;
+      } on BarometerException catch (e) {
+        expect(e.code, 'native_error');
+        return null;
+      }
+    }
+
+    // An escaped spelling of the name selects the same member.
+    expect(await id(r'{"bundle_\u0069d":"b1","results":[]}'), 'b1');
+    expect(await id(r'{"bundle_id":"b\u0031","results":[]}'), 'b1');
+    // A repeated name, also one spelled with escapes, selects no reading.
+    expect(await id('{"bundle_id":"b1","bundle_id":"b1"}'), isNull);
+    expect(await id('{"bundle_id":"b1","bundle_id":"b2"}'), isNull);
+    expect(await id(r'{"bundle_id":"b1","bundle_\u0069d":"b2"}'), isNull);
+    expect(await id('{"results":[{"a":1,"a":2}],"bundle_id":"b1"}'), isNull);
+    // A case variant is another name.
+    expect(await id('{"Bundle_id":"b1"}'), isNull);
+    expect(await id('{"bundle_id":"b1","Bundle_id":"b2"}'), 'b1');
+    // Numbers are canonical 64-bit integers.
+    for (final n in [
+      '-0',
+      '1.0',
+      '1e0',
+      '1E0',
+      '01',
+      '+1',
+      '9223372036854775808',
+    ]) {
+      expect(await id('{"bundle_id":"b1","n":$n}'), isNull, reason: n);
+    }
+    expect(await id('{"bundle_id":"b1","n":9223372036854775807}'), 'b1');
+    expect(await id('{"bundle_id":"b1","n":-9223372036854775808}'), 'b1');
+    // Framing and text.
+    expect(await id('\uFEFF{"bundle_id":"b1"}'), isNull);
+    expect(await id('{"bundle_id":"b1"}{}'), isNull);
+    expect(await id('{"bundle_id":"b1",}'), isNull);
+    expect(await id(r'{"bundle_id":"b\ud800"}'), isNull);
+    expect(await id(r'{"bundle_id":"b\udc00\ud800"}'), isNull);
+    expect(await id('{"bundle_id":"b\u0001"}'), isNull);
+    expect(await id(' {"bundle_id":"b1"}\n'), 'b1');
+    expect(await id(r'{"bundle_id":"\ud83d\ude00"}'), '\u{1F600}');
+  });
+
+  test('nextBundle rejects invalid UTF-8 and bounds', () async {
+    Future<String?> id(List<int> bytes) async {
+      answers['nextBundle'] = (_) => Uint8List.fromList(bytes);
+      try {
+        return (await BarometerClient().nextBundle())!.id;
+      } on BarometerException catch (e) {
+        expect(e.code, 'native_error');
+        return null;
+      }
+    }
+
+    List<int> named(List<int> value) => [
+      ...utf8.encode('{"bundle_id":"'),
+      ...value,
+      ...utf8.encode('"}'),
+    ];
+    expect(await id(named([0xff])), isNull);
+    // Overlong "/" and an encoded surrogate (CESU-8).
+    expect(await id(named([0xc0, 0xaf])), isNull);
+    expect(await id(named([0xed, 0xa0, 0x80])), isNull);
+    expect(await id(named([0xe2, 0x82])), isNull);
+    expect(await id(named([0xc3, 0xa9])), '\u00e9');
+    // Depth 18 is the bound: the root and 17 nested arrays.
+    String nested(int arrays) =>
+        '{"bundle_id":"b1","x":${'[' * arrays}${']' * arrays}}';
+    expect(await id(utf8.encode(nested(17))), 'b1');
+    expect(await id(utf8.encode(nested(18))), isNull);
+    final padding = 262144 - utf8.encode('{"bundle_id":"b1","p":""}').length;
+    expect(
+      await id(utf8.encode('{"bundle_id":"b1","p":"${'a' * padding}"}')),
+      'b1',
+    );
+    expect(
+      await id(utf8.encode('{"bundle_id":"b1","p":"${'a' * (padding + 1)}"}')),
+      isNull,
+    );
+  });
+
+  test('toJson decodes strictly to the same values', () async {
+    answers['nextBundle'] = (_) => Uint8List.fromList(
+      utf8.encode(r'{"bundle_id":"b1","results":[{"n":1,"\u0073":"x"}]}'),
+    );
+    final bundle = (await BarometerClient().nextBundle())!;
+    expect(bundle.toJson(), {
+      'bundle_id': 'b1',
+      'results': [
+        {'n': 1, 's': 'x'},
+      ],
+    });
   });
 
   test('the remaining calls send their arguments', () async {
@@ -182,6 +280,23 @@ void main() {
       throwsA(_code('invalid_arguments')),
     );
     expect(calls, isEmpty);
+  });
+
+  test('JSON arguments are produced as text the Go library reads', () async {
+    // A Dart map has unique names; numbers keep their Dart spelling, so a
+    // double reaches Go as a fraction, which its integer fields reject. A lone
+    // surrogate is escaped, so the text stays valid UTF-8, and Go rejects the
+    // escape.
+    await BarometerClient().initialize({
+      'port': 1.0,
+      'scope': 'a\u{D800}',
+      'n': 9223372036854775807,
+    });
+    await BarometerClient().setProxy({'host': 'h\u00e9'});
+    final config = (calls[0].arguments as Map)['config'] as String;
+    expect(config, r'{"port":1.0,"scope":"a\ud800","n":9223372036854775807}');
+    final proxy = (calls[1].arguments as Map)['proxy'] as String;
+    expect(proxy, '{"host":"h\u00e9"}');
   });
 
   test('a missing handle is a native error', () async {

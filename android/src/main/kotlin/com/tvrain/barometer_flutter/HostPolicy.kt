@@ -1,8 +1,6 @@
 package com.tvrain.barometer_flutter
 
 import java.security.MessageDigest
-import org.json.JSONException
-import org.json.JSONObject
 
 /** A host policy failure with a fixed code: `trust_invalid` or `policy_rejected`. */
 internal class PolicyException(code: String) : Exception(code)
@@ -75,14 +73,19 @@ internal class HostPolicy(private val source: () -> ByteArray) {
         const val POLICY_REJECTED = "policy_rejected"
 
         /**
-         * The `policy.generation` of [document], or null when it is not a JSON object with a
-         * positive integer generation. The facade validates the rest.
+         * The `policy.generation` of [document], or null when it is not a strict JSON object
+         * with an integer generation in the facade's range 1 to 2^63-1. The document is read
+         * with [StrictJson] under the facade's trusted-document bounds, so a repeated or
+         * escaped-equivalent member name, an integer in another spelling (`-0`, `7.0`, `7e0`)
+         * or out of range, invalid UTF-8 or a byte-order mark yields no generation, as the
+         * facade selects none; an escaped spelling of `generation` is the same member. Unknown
+         * members are left to the facade, which rejects them.
          */
         fun generation(document: ByteArray): Long? = try {
-            val policy = JSONObject(String(document, Charsets.UTF_8)).getJSONObject("policy")
-            val value = policy.get("generation")
-            if (value is Int || value is Long) (value as Number).toLong().takeIf { it > 0 } else null
-        } catch (e: JSONException) {
+            val root = StrictJson.decode(document, StrictJson.TRUST_DOCUMENT) as? Map<*, *>
+            val policy = root?.get("policy") as? Map<*, *>
+            StrictJson.integer(policy?.get("generation"), 1, Long.MAX_VALUE)
+        } catch (e: StrictJsonException) {
             null
         }
     }

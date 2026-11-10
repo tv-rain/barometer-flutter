@@ -2,8 +2,6 @@ package com.tvrain.barometer_flutter
 
 import android.content.res.AssetManager
 import java.io.ByteArrayOutputStream
-import org.json.JSONException
-import org.json.JSONObject
 
 /**
  * Reads the trusted local document (`barometer-trust/1`) that the facade's `NewClient` takes:
@@ -32,22 +30,26 @@ internal object TrustDocument {
      * sign remote packages; a keyless issuer can only be reached through an embedded delivery,
      * so it is the document's embedded issuer. Zero or several keyless issuers leave the
      * association undefined, and embedded tasks are then not installed. Call this only with a
-     * document the facade has accepted, which has already been validated in full.
+     * document the facade has accepted, which has already been validated in full. The document is
+     * read with [StrictJson], so it can only select the members the facade selected.
      */
     fun embeddedIssuer(document: ByteArray): String? = try {
-        val policy = JSONObject(String(document, Charsets.UTF_8)).getJSONObject("policy")
-        val keyed = HashSet<String>()
-        val keys = policy.getJSONArray("keys")
-        for (i in 0 until keys.length()) keyed.add(keys.getJSONObject(i).getString("issuer_id"))
-        val issuers = policy.getJSONArray("issuers")
-        val keyless = (0 until issuers.length())
-            .map { issuers.getJSONObject(it).getString("issuer_id") }
-            .filter { it !in keyed }
-            .toSet()
-        keyless.singleOrNull()
-    } catch (e: JSONException) {
+        val root = StrictJson.decode(document, StrictJson.TRUST_DOCUMENT) as? Map<*, *>
+        val policy = root?.get("policy") as? Map<*, *>
+        val keys = policy?.get("keys") as? List<*>
+        val issuers = policy?.get("issuers") as? List<*>
+        if (keys == null || issuers == null) {
+            null
+        } else {
+            val keyed = keys.map { issuerId(it) ?: return null }.toSet()
+            val all = issuers.map { issuerId(it) ?: return null }
+            all.filter { it !in keyed }.toSet().singleOrNull()
+        }
+    } catch (e: StrictJsonException) {
         null
     }
+
+    private fun issuerId(entry: Any?): String? = (entry as? Map<*, *>)?.get("issuer_id") as? String
 }
 
 /**

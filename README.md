@@ -52,7 +52,7 @@ Task sources:
 
 The embedded issuer is the one issuer of the trusted local document's policy that has no trusted key. An issuer with a key can sign remote packages, while a keyless issuer can only be reached through an embedded delivery. If the policy has no keyless issuer or more than one, embedded tasks are not installed and `admitTask` fails with `delivery_unavailable`.
 
-`TaskHandle` and `RunHandle` are opaque and valid for one client generation. A `Bundle` carries its `id` and the exact UTF-8 JSON `bytes` Barometer stored; transport the bytes unchanged. `toJson()` decodes them.
+`TaskHandle` and `RunHandle` are opaque and valid for one client generation. A `Bundle` carries its `id` and the exact UTF-8 JSON `bytes` Barometer stored; transport the bytes unchanged. `toJson()` decodes them strictly ([Strict JSON](#strict-json)).
 
 A failure throws `BarometerException(code)`. The code is the facade's code string, such as `not_initialized`, `already_initialized`, `handle_unavailable`, `run_not_due`, `bundle_unavailable`, `clearing_incomplete` or an admission class such as `task_source_unauthenticated`, and carries no other detail. The native layer raises some of these codes itself, and adds two of its own, `invalid_arguments` and `native_error`:
 
@@ -301,6 +301,21 @@ Every `initialize` reads the document again, with the same rules as on Android:
 The generation floor is kept in memory for the life of the process and is not persisted. An application bundle does not change while its process runs, so on iOS a different document arrives only with another build of the application, in a new process; across releases the App Store does not install an earlier version over a later one, and Go rejects admission under a generation below the highest one of its retained replay records as `policy_rollback`. A development or TestFlight build installed over a later one, or an application whose container was removed, can start from an earlier packaged document.
 
 The document's local restriction inputs apply on iOS as in Go: `release_reviewed_tasks` alone enables the embedded one-time exception, for the embedded tasks it lists by issuer and exact-bytes digest; `device` gates runs on the battery state the `Device` adapter reads (a run that does not meet it returns `run_not_due`; an unknown state, as on the simulator, never meets it); and `network_context` limits Network Context acquisition to the paths and configured endpoints it lists. `setProxy` and `clearProxy` return `proxy_rejected` for a configuration the trusted document does not approve or the facade cannot validate, leaving the previous proxy in place, and `cleanup_incomplete` when the previous proxy's work does not end within the cleanup bound, after which the client is blocked until `close`. Keep the previous local proxy available until `setProxy` or `clearProxy` returns. Signed remote packages are verified by the native library against the Ed25519 issuer keys of the active policy; the plugin holds no key.
+
+## Strict JSON
+
+The Go library decodes every task, configuration, trusted document and stored bundle with one strict decoder: valid UTF-8 without a byte-order mark, one value, unique member names after unescaping, no unknown member, and integers only in their canonical spelling within the field's range. Where the plugin itself reads a value from JSON, it reads it under the same rules, so the plugin and the library cannot select different values from the same bytes:
+
+| Consumer or producer | What it does | Disposition |
+|---|---|---|
+| Kotlin `HostPolicy.generation`, Swift `HostPolicy.generation` | Read `policy.generation` of the trusted local document for the replacement gate, before the facade validates the document | Strict reader (`StrictJson.kt`, `StrictJSON.swift`) under the facade's trusted-document bounds (1 MiB, depth 10, 131,072 values); an integer from 1 to 2^63-1 in canonical spelling, otherwise `trust_invalid` |
+| Kotlin and Swift `TrustDocument.embeddedIssuer` | Read the issuer IDs of `policy.keys` and `policy.issuers` of a document the facade accepted | Same strict reader; Swift compares the IDs by their exact bytes, not by canonical equivalence |
+| Dart `BarometerClient.nextBundle` and `Bundle.toJson()` | Read `bundle_id`, and decode the bundle for the host | Strict reader (`lib/src/strict_json.dart`) under the library's stored-bundle bounds (262,144 bytes, depth 18); every number must be a canonical 64-bit integer, as in every bundle the library accepts. A bundle that does not decode is `native_error` from `nextBundle` and a `FormatException` from `toJson()` |
+| Dart `initialize` and `setProxy` | Encode the host's map with `jsonEncode` | Producer only: a Dart map has unique names and lone surrogates are escaped; the facade decodes the text strictly and rejects anything else (a double such as `1.0` for an integer field, a lone surrogate) |
+| `admitTask` (embedded task files and remote packages), `initialize` and `setProxy` text, `nextBundle` bytes | Passed through the channel and native glue unparsed | Not applicable: the facade is the only decoder |
+| Test helpers (`org.json` and `JSONSerialization` in the instrumented and XCTest helpers, `scripts/measurement_fixtures.py`) | Build or read synthetic test data | Not applicable: not part of the plugin |
+
+The strict readers do not reject unknown members: the facade rejects them, so no client is created from such a document and a generation read from it is never activated. An escaped spelling of a member name is the same member. Host tests (`StrictJsonTest`, Dart `barometer_client_test.dart`) check the readers against the library's rules, and `StrictJsonDeviceTest` and the `StrictJSONTests` XCTests check on emulators and simulators that the host reads a generation and an embedded issuer exactly when the facade accepts the document, and that a rejected document leaves no client, store, admission or bundle.
 
 ## Build and Validate
 

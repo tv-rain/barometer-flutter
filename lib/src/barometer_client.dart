@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:flutter/services.dart';
 
+import 'strict_json.dart';
+
 /// The method channel between [BarometerClient] and the native plugin.
 const MethodChannel _channel = MethodChannel(
   'com.tvrain.barometer_flutter/client',
@@ -67,8 +69,14 @@ final class Bundle {
   final Uint8List bytes;
 
   /// The bundle decoded as a JSON map.
+  ///
+  /// The bytes are decoded strictly, by the rules the Go library applies when
+  /// it re-reads a stored bundle: a repeated member name (also when spelled
+  /// with escapes), a number that is not a canonical 64-bit integer, invalid
+  /// UTF-8 or a value past the bundle bounds throws a [FormatException]
+  /// rather than selecting one reading.
   Map<String, Object?> toJson() =>
-      jsonDecode(utf8.decode(bytes)) as Map<String, Object?>;
+      decodeStrictJson(bytes, bundleLimits) as Map<String, Object?>;
 
   @override
   String toString() => 'Bundle';
@@ -160,13 +168,15 @@ class BarometerClient {
       _call<void>('cancelRun', {'run': run._value});
 
   /// The oldest pending Result Bundle, or null when none is pending.
+  ///
+  /// Its identifier is read with the strict decoding of [Bundle.toJson]; a
+  /// bundle that does not decode strictly throws `native_error`.
   Future<Bundle?> nextBundle() async {
     final bytes = await _call<Uint8List>('nextBundle');
     if (bytes == null) return null;
     final Object? id;
     try {
-      id =
-          (jsonDecode(utf8.decode(bytes)) as Map<String, Object?>)['bundle_id'];
+      id = (decodeStrictJson(bytes, bundleLimits) as Map)['bundle_id'];
     } on Object {
       throw const BarometerException('native_error');
     }

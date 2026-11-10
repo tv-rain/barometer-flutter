@@ -17,6 +17,7 @@
 		D0A72C0B2F00000000000001 /* LifecycleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0A72C0A2F00000000000001 /* LifecycleTests.swift */; };
 		D0A72E0B2F00000000000001 /* PolicyTestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0A72E0A2F00000000000001 /* PolicyTestSupport.swift */; };
 		D0A72E1B2F00000000000001 /* HostPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0A72E1A2F00000000000001 /* HostPolicyTests.swift */; };
+		D0A72E1B2F000000000000A1 /* StrictJSONTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0A72E1A2F000000000000A1 /* StrictJSONTests.swift */; };
 		D0A72E2B2F00000000000001 /* LocalPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0A72E2A2F00000000000001 /* LocalPolicyTests.swift */; };
 		D0A72E3B2F00000000000001 /* ProxyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0A72E3A2F00000000000001 /* ProxyTests.swift */; };
 		D0A72E4B2F00000000000001 /* RemoteTaskTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0A72E4A2F00000000000001 /* RemoteTaskTests.swift */; };
@@ -72,6 +73,7 @@
 		D0A72C0A2F00000000000001 /* LifecycleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LifecycleTests.swift; sourceTree = "<group>"; };
 		D0A72E0A2F00000000000001 /* PolicyTestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PolicyTestSupport.swift; sourceTree = "<group>"; };
 		D0A72E1A2F00000000000001 /* HostPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostPolicyTests.swift; sourceTree = "<group>"; };
+		D0A72E1A2F000000000000A1 /* StrictJSONTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StrictJSONTests.swift; sourceTree = "<group>"; };
 		D0A72E2A2F00000000000001 /* LocalPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalPolicyTests.swift; sourceTree = "<group>"; };
 		D0A72E3A2F00000000000001 /* ProxyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProxyTests.swift; sourceTree = "<group>"; };
 		D0A72E4A2F00000000000001 /* RemoteTaskTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteTaskTests.swift; sourceTree = "<group>"; };
@@ -139,6 +141,7 @@
 				D0A72C0A2F00000000000001 /* LifecycleTests.swift */,
 				D0A72E0A2F00000000000001 /* PolicyTestSupport.swift */,
 				D0A72E1A2F00000000000001 /* HostPolicyTests.swift */,
+				D0A72E1A2F000000000000A1 /* StrictJSONTests.swift */,
 				D0A72E2A2F00000000000001 /* LocalPolicyTests.swift */,
 				D0A72E3A2F00000000000001 /* ProxyTests.swift */,
 				D0A72E4A2F00000000000001 /* RemoteTaskTests.swift */,
@@ -462,6 +465,7 @@
 				D0A72C0B2F00000000000001 /* LifecycleTests.swift in Sources */,
 				D0A72E0B2F00000000000001 /* PolicyTestSupport.swift in Sources */,
 				D0A72E1B2F00000000000001 /* HostPolicyTests.swift in Sources */,
+				D0A72E1B2F000000000000A1 /* StrictJSONTests.swift in Sources */,
 				D0A72E2B2F00000000000001 /* LocalPolicyTests.swift in Sources */,
 				D0A72E3B2F00000000000001 /* ProxyTests.swift in Sources */,
 				D0A72E4B2F00000000000001 /* RemoteTaskTests.swift in Sources */,
