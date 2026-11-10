@@ -50,7 +50,33 @@ if [ "$platform" = android ]; then
 fi
 
 if [ "$platform" = android ]; then
-  flutter test integration_test/barometer_flow_test.dart -d "$device" --verbose > "$log" 2>&1 &
+  # `flutter test` installs the application with `adb install`, which streams the APK into
+  # `cmd package install`. On API 24 emulators that transfer stopped part way in CI and never
+  # resumed (docs/android-validation.md). The tool runs here with a view of the Android SDK
+  # whose `adb` adds `--no-streaming` to `install`, so the APK is pushed and then installed.
+  sdk=${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$(dirname "$(dirname "$(command -v adb)")")}}
+  view="$log.sdk"
+  # Removes the view's links and wrapper, not what they point to.
+  trap 'rm -rf "$view"' EXIT
+  mkdir -p "$view/platform-tools"
+  for entry in "$sdk"/*; do
+    [ "$(basename "$entry")" = platform-tools ] || ln -s "$entry" "$view/"
+  done
+  for entry in "$sdk"/platform-tools/*; do
+    [ "$(basename "$entry")" = adb ] || ln -s "$entry" "$view/platform-tools/"
+  done
+  cat > "$view/platform-tools/adb" << EOF
+#!/usr/bin/env bash
+args=()
+for arg in "\$@"; do
+  args+=("\$arg")
+  if [ "\$arg" = install ]; then args+=(--no-streaming); fi
+done
+exec "$sdk/platform-tools/adb" "\${args[@]}"
+EOF
+  chmod +x "$view/platform-tools/adb"
+  ANDROID_HOME=$view ANDROID_SDK_ROOT=$view \
+    flutter test integration_test/barometer_flow_test.dart -d "$device" --verbose > "$log" 2>&1 &
 else
   result="$log.xcresult"
   (
@@ -104,8 +130,8 @@ wait "$pid"
 status=$?
 if [ "$platform" = android ]; then
   if [ "$status" -eq 0 ]; then
-    # The test reporter's lines and the installation.
-    grep -E '^[0-9]{2}:[0-9]{2} |Installing|exiting with code' "$log" | cut -c1-200
+    # The test reporter's lines and the installation, with the adb that ran it.
+    grep -E '^[0-9]{2}:[0-9]{2} |Installing|executing: .*adb.* install|exiting with code' "$log" | cut -c1-200
   else
     tail -n 200 "$log"
   fi
