@@ -325,6 +325,8 @@ cd android
 ./gradlew :barometer_flutter:connectedDebugAndroidTest   # needs a running emulator or device
 ```
 
+On an iOS simulator, `flutter test integration_test` can wait forever after it has launched the application: it reads the application's VM service address from a simulator log stream that it starts at the same moment as the application, and misses it when the stream attaches late ([Apple validation](docs/apple-validation.md#example-application-from-dart)). Stop such a run and start it again. `scripts/integration-test.sh` avoids the wait on iOS: it builds the example from `barometer_flow_test.dart` and runs the test from XCTest through the `integration_test` plugin's native runner (`example/ios/RunnerTests/IntegrationTests.m`, active only with `TEST_RUNNER_BAROMETER_INTEGRATION_TEST=1`). On Android it runs `flutter test` with an `adb` that installs without streaming, because streamed installations stalled on API 24 emulators ([Android validation](docs/android-validation.md#example-application-from-dart)). Either way it runs once and stops with diagnostics after 15 minutes, or after the number of minutes given as its second argument.
+
 The Android instrumented tests change the emulator's connectivity and power state through the shell (a test VPN, airplane mode from API 30, Wi-Fi, forced device idle, the reported battery level and charging state) and restore it; run them on emulators only. On API 21, run them on a freshly started emulator: it remembers the VPN consent by package name, and a reinstalled test application gets a new user ID, for which it refuses to establish the VPN. Three scripts cover what the instrumentation cannot do itself:
 
 ```sh
