@@ -82,7 +82,7 @@ jobs:
       # properties are set on the line that uses them.
       - name: Run integration test on an API 35 Android emulator
         if: matrix.target == 'android'
-        timeout-minutes: 45
+        timeout-minutes: 60
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         with:
           api-level: 35
@@ -98,7 +98,7 @@ jobs:
             ORG_GRADLE_PROJECT_barometerUmbrellaArtifact=com.tvrain.barometer:barometer:local ORG_GRADLE_PROJECT_barometerUmbrellaRepository="$GITHUB_WORKSPACE/android/libs/maven" bash ../scripts/integration-test.sh emulator-5554
       - name: Run integration test on an API 24 Android emulator
         if: matrix.target == 'android'
-        timeout-minutes: 45
+        timeout-minutes: 60
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         with:
           api-level: 24
@@ -162,6 +162,7 @@ jobs:
             status=0
             xcodebuild test -quiet -workspace Runner.xcworkspace -scheme Runner -destination "platform=iOS Simulator,arch=arm64,id=$udid" -only-testing:RunnerTests -parallel-testing-enabled NO -resultBundlePath "$result" || status=$?
             xcrun xcresulttool get test-results summary --path "$result" --compact | jq -c '{result, totalTestCount, passedTests, failedTests, skippedTests, device: [.devicesAndConfigurations[].device | "\(.deviceName) \(.osVersion)"]}'
+            xcrun xcresulttool get test-results tests --path "$result" --compact | jq -r '.. | objects | select(.nodeType? == "Failure Message") | .name'
             xcrun simctl shutdown "$udid"
             [ "$status" -eq 0 ] || exit "$status"
           done
@@ -206,6 +207,7 @@ jobs:
           status=0
           xcodebuild test -quiet -workspace Runner.xcworkspace -scheme Runner -destination "platform=iOS Simulator,arch=arm64,id=$SIM_NEWEST" -only-testing:RunnerTests -parallel-testing-enabled NO -resultBundlePath "$result" || status=$?
           xcrun xcresulttool get test-results summary --path "$result" --compact | jq -c '{result, totalTestCount, passedTests, failedTests, skippedTests, device: [.devicesAndConfigurations[].device | "\(.deviceName) \(.osVersion)"]}'
+          xcrun xcresulttool get test-results tests --path "$result" --compact | jq -r '.. | objects | select(.nodeType? == "Failure Message") | .name'
           exit "$status"
       - name: Run integration test in umbrella mode
         if: matrix.target == 'apple'

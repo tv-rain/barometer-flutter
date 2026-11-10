@@ -116,6 +116,8 @@ grep -vE 'Stale file|^$' "$log" | tail -n 40
 # Without the environment the XCTest has no test methods and would pass empty.
 summary=$(xcrun xcresulttool get test-results summary --path "$result" --compact 2> /dev/null)
 echo "$summary" | jq -c '{result, totalTestCount, passedTests, failedTests, device: [.devicesAndConfigurations[].device | "\(.deviceName) \(.osVersion)"]}'
+xcrun xcresulttool get test-results tests --path "$result" --compact 2> /dev/null |
+  jq -r '.. | objects | select(.nodeType? == "Failure Message") | .name'
 if [ "$status" -eq 0 ] && ! echo "$summary" | jq -e '.passedTests >= 1 and .failedTests == 0' > /dev/null; then
   echo "::error::no passed integration test in the result bundle"
   status=1
