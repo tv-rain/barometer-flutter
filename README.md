@@ -192,7 +192,7 @@ export BAROMETER_FLUTTER_UMBRELLA_MODULE=<module name of the umbrella framework>
 flutter build ios --debug --simulator
 ```
 
-The Gradle properties can also be passed as `ORG_GRADLE_PROJECT_barometerUmbrellaArtifact` and `ORG_GRADLE_PROJECT_barometerUmbrellaRepository`, which `flutter test integration_test` also honors. Umbrella mode has been built and its integration test run locally on an Android emulator, an iOS simulator and an iPhone against an umbrella artifact that binds `barometermobile` with other Go packages, and the measurement integration test on API 24 and API 35 emulators, an iOS simulator and an iPhone. The device build workflow builds the example in umbrella mode with the standalone library standing in for the umbrella artifact, and runs tests in standalone mode only.
+The Gradle properties can also be passed as `ORG_GRADLE_PROJECT_barometerUmbrellaArtifact` and `ORG_GRADLE_PROJECT_barometerUmbrellaRepository`, which `flutter test integration_test` also honors. Umbrella mode has been built and its integration test run locally on an Android emulator, an iOS simulator and an iPhone against an umbrella artifact that binds `barometermobile` with other Go packages, and the measurement integration test on API 24 and API 35 emulators, an iOS simulator and an iPhone. The device build workflow builds the example in umbrella mode with the standalone library standing in for the umbrella artifact, which binds the same facade, and runs the example's integration test in that mode on both Android emulators and the XCTests and integration test on the newest iOS simulator. The example's `Podfile` gives the `RunnerTests` target the plugin's `BarometerUmbrella` search path and module name in umbrella mode, because `@testable import barometer_flutter` loads that module too. No umbrella artifact that binds other Go packages is used in CI, so a second Go package in the same binary is checked only locally.
 
 ## Android State Storage
 
@@ -316,6 +316,7 @@ flutter test
 cd example
 flutter test
 flutter test integration_test -d <device-id>   # needs a running emulator or simulator
+bash ../scripts/integration-test.sh <device-id>   # the flow test only, once, bounded, as CI runs it
 flutter build apk --debug
 flutter build ios --debug --no-codesign
 flutter build ios --debug --simulator
@@ -345,7 +346,7 @@ bash scripts/ios-storage-full-check.sh <device-type> <runtime-id> [image-size]  
 
 `NetworkChangeDeviceTests` runs only on a device while a person switches Wi-Fi, airplane mode or a VPN, with `TEST_RUNNER_BAROMETER_NETWORK_CHANGE_TEST=<wait-seconds>,<window-seconds>` set for `xcodebuild`.
 
-The Swift store, adapter, channel, host policy, proxy and remote task XCTests run in `example/ios` on a simulator after the iOS simulator build, and a script checks the store's atomicity under process kill. CI does not run them. The channel, host policy, proxy and remote task tests contact no network: their tasks run only on the proxy path through loopback proxies in the test process, which never open a connection onward. The adapter tests contact `1.1.1.1:443` and resolve `example.org` once each:
+The Swift store, adapter, channel, host policy, proxy and remote task XCTests run in `example/ios` on a simulator after the iOS simulator build, and a script checks the store's atomicity under process kill. The device build workflow runs them; the scripts run only locally. The channel, host policy, proxy and remote task tests contact no network: their tasks run only on the proxy path through loopback proxies in the test process, which never open a connection onward. The adapter tests contact `1.1.1.1:443` and resolve `example.org` once each:
 
 ```sh
 cd example/ios
@@ -354,7 +355,7 @@ cd ../..
 bash scripts/ios-record-store-kill-test.sh <udid>
 ```
 
-CI runs formatting, analysis and the Dart tests on every pull request and push to `main`. The native builds run in the separate device build workflow, which is started manually from the Actions tab when a change touches the native glue, the example, the build scripts or the `barometer-go` pin, and before an Epic closes. It runs the same steps on `ubuntu-24.04` for Android and `macos-15` for iOS, except the plugin's instrumented tests and XCTests, and runs the example's integration test on an API 35 `x86_64` Android emulator and on an iPhone simulator of the newest iOS runtime installed on the runner.
+CI runs formatting, analysis and the Dart tests on every pull request and push to `main`. The native builds run in the separate device build workflow, which is started manually from the Actions tab when a change touches the native glue, the example, the build scripts or the `barometer-go` pin, and before an Epic closes. It runs on hosted runners only, `ubuntu-24.04` for Android and `macos-15` for iOS. On Android it builds the example in standalone and umbrella mode, runs the plugin's unit tests, and runs the example's integration test in both modes on `x86_64` emulators at API 35 and API 24. On iOS it builds the example for devices and simulators, installs the oldest iOS runtime that the runner's Xcode offers for download, and runs the XCTests and the example's integration test on an `iPhone <number>` simulator of the newest installed runtime and of that oldest runtime, then both again on the newest in umbrella mode. It does not run the Android instrumented tests, the scripts above or anything on a device, and uses no internal artifact.
 
 ## Repository Boundaries
 

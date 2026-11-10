@@ -13,7 +13,11 @@ import 'package:barometer_flutter_example/main.dart';
 /// test checks the lifecycle and the result shape, never the outcome, and
 /// prints no result.
 void main() {
-  IntegrationTestWidgetsFlutterBinding.ensureInitialized();
+  final binding = IntegrationTestWidgetsFlutterBinding.ensureInitialized();
+  // When the test runs from an XCTest (ios/RunnerTests/IntegrationTests.m), the test host turns
+  // accessibility on while the test runs, and the semantics handle that adds would be reported
+  // as left open at its end. The test does not use semantics.
+  binding.platformDispatcher.semanticsEnabledTestValue = false;
 
   final platform = Platform.isAndroid ? 'android' : 'ios';
 
