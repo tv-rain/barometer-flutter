@@ -162,6 +162,8 @@ jobs:
           mkdir -p ios/umbrella/Frameworks
           ln -s ../../../../ios/Frameworks/Barometer.xcframework ios/umbrella/Frameworks/Barometer.xcframework
           flutter pub get
+          # pod install needs the iOS engine artifacts, which no earlier build in this job fetched.
+          flutter precache --ios
           (cd ios && pod install)
           grep -q 'barometer_flutter/Umbrella' ios/Podfile.lock
           flutter build ios --debug --simulator
