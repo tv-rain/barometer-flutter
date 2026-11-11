@@ -23,7 +23,19 @@ slices:
 status: compiled only; not a release, not platform support
 ```
 
-[Specification Findings](#specification-findings), [Strict JSON](#strict-json), [Reinstall and Backup](#reinstall-and-backup), [Durability, Full Disk and the Nine Measurements](#durability-full-disk-and-the-nine-measurements), [Host Policy, Proxy and Signed Remote Tasks](#host-policy-proxy-and-signed-remote-tasks) and [Signals, Lifecycle and Linkage Keys](#signals-lifecycle-and-linkage-keys) were recorded with this library. [Trust Roots Inside the Application](#trust-roots-inside-the-application) was recorded at the earlier pin `d7a5440ef35accc89a16a3074c586fa3d9f0308a`, and the sections after it at `c49695c9406d64d34d247de827ae2b0343634640` and, where they say so, `52789565c85f9d14d7b2ce1d5e42f85b11cea753`; their build-info differs from the one above only in the `commit` line.
+[Proxy Host Integration](#proxy-host-integration), [Specification Findings](#specification-findings), [Strict JSON](#strict-json), [Reinstall and Backup](#reinstall-and-backup), [Durability, Full Disk and the Nine Measurements](#durability-full-disk-and-the-nine-measurements), [Host Policy, Proxy and Signed Remote Tasks](#host-policy-proxy-and-signed-remote-tasks) and [Signals, Lifecycle and Linkage Keys](#signals-lifecycle-and-linkage-keys) were recorded with this library. [Trust Roots Inside the Application](#trust-roots-inside-the-application) was recorded at the earlier pin `d7a5440ef35accc89a16a3074c586fa3d9f0308a`, and the sections after it at `c49695c9406d64d34d247de827ae2b0343634640` and, where they say so, `52789565c85f9d14d7b2ce1d5e42f85b11cea753`; their build-info differs from the one above only in the `commit` line.
+
+## Proxy Host Integration
+
+Run on 2026-11-11 from `example/android` with `./gradlew :barometer_flutter:connectedDebugAndroidTest`, with the library above, on the API 24 and API 35 emulators of [Reinstall and Backup](#reinstall-and-backup) started headless, for the [proxy host integration mapping](proxy-host-integration.md). `ProxyDeviceTest.proxyCodesReachTheChannel` drives the channel host, with a test store opener in place of the `default` scope, against the facade with a signed remote package of a synthetic issuer: after `initialize` with a never-answering loopback proxy, `setProxy` returns `proxy_rejected` for an unapproved connection code, for a proxy object carrying `primary_endpoint` and for one without `port`; a proxy-path TCP-01 attempt then reaches the initial proxy and stays `active`; with the host's record store held by the test, `setProxy` and `clearProxy` each return `cleanup_incomplete`, the replacement proxy receives no `CONNECT`, and `close` succeeds once the store is released.
+
+| Run | API 24 | API 35 |
+|---|---|---|
+| `ProxyDeviceTest`, `ChannelDeviceTest` and `FindingAdoptionDeviceTest` | 9 of 9 passed | Run in the full suite |
+| `ProxyDeviceTest` alone | Not run separately | 3 of 3 passed |
+| Full instrumented suite | Not rerun | 55 tests: 50 passed, 5 skipped, none failed |
+
+The API 35 skips are `ClearStorageDeviceTest` and `ReinstallBackupDeviceTest` (2 each), which run only from their host scripts, and `LinkageKeysDeviceTest.noKeyStoreBeforeApi23`. Host tests: `./gradlew :barometer_flutter:testDebugUnitTest` passed. `flutter test` passed for the plugin, including `proxy codes reach Dart unchanged`. The tests contact no network: the attempt runs only through loopback proxies in the test process. No result was printed or recorded.
 
 ## Specification Findings
 
