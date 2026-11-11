@@ -1,9 +1,20 @@
 name: Device build
 
-# Run manually from the Actions tab: when a change touches the native glue, the
-# example, the build scripts or the barometer-go pin, and before an Epic closes.
+# Run manually from the Actions tab, once per pull request on its final commit, when a
+# change touches the native glue, the example, the build scripts or the barometer-go pin,
+# choosing only the platforms the change affects; and on all platforms at main before an
+# Epic closes.
 on:
   workflow_dispatch:
+    inputs:
+      platforms:
+        description: Platforms to build and test
+        type: choice
+        options:
+          - all
+          - android
+          - apple
+        default: all
 
 permissions:
   contents: read
@@ -13,67 +24,53 @@ env:
   GO_VERSION: "1.26.0"
 
 jobs:
-  build:
-    name: Build and test example (${{ matrix.target }})
-    runs-on: ${{ matrix.runner }}
+  # Android: the standalone build and unit tests, then the example's integration test on
+  # an x86_64 emulator at API 35 and at API 24, the lowest level a Flutter application
+  # runs on, in standalone and in umbrella mode. The standalone library stands in for an
+  # umbrella artifact: it binds the same facade, so no internal artifact is needed.
+  android:
+    name: Android
+    if: inputs.platforms != 'apple'
+    runs-on: ubuntu-24.04
     timeout-minutes: 150
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - target: android
-            runner: ubuntu-24.04
-          - target: apple
-            runner: macos-15
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          cache: false
       - name: Configure Android toolchain
-        if: matrix.target == 'android'
         shell: bash
         run: |
           echo "JAVA_HOME=$JAVA_HOME_17_X64" >> "$GITHUB_ENV"
           echo "$JAVA_HOME_17_X64/bin" >> "$GITHUB_PATH"
+          echo "SYSTEM_IMAGES=$ANDROID_HOME/system-images" >> "$GITHUB_ENV"
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "ndk;28.2.13676358"
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
-      - name: Report Apple toolchain
-        if: matrix.target == 'apple'
-        run: |
-          xcodebuild -version
-          pod --version
-          xcrun simctl list runtimes ios
-      - name: Build native Barometer library
-        run: bash scripts/build-native.sh ${{ matrix.target }}
-      - name: Set up Flutter
-        run: |
-          git clone --quiet --depth 1 --branch "$FLUTTER_VERSION" https://github.com/flutter/flutter.git "$RUNNER_TEMP/flutter"
-          echo "$RUNNER_TEMP/flutter/bin" >> "$GITHUB_PATH"
-      - name: Report Flutter version
-        run: flutter --version
-
-      # Android: the standalone build and unit tests, then the example's integration test on
-      # an x86_64 emulator at API 35 and at API 24, the lowest level a Flutter application
-      # runs on, in standalone and in umbrella mode. The standalone library stands in for an
-      # umbrella artifact: it binds the same facade, so no internal artifact is needed.
+      - name: Prepare build
+        uses: ./.github/actions/prepare
+        with:
+          target: android
+          go-version: ${{ env.GO_VERSION }}
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+      # Gradle's dependency cache; runs on branches read the cache that main wrote.
+      - name: Set up Gradle cache
+        uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+      # The emulator system images, whose download from Google once took over half an hour.
+      - name: Restore emulator system images
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ${{ env.SYSTEM_IMAGES }}/android-35/default/x86_64
+            ${{ env.SYSTEM_IMAGES }}/android-24/default/x86_64
+          key: android-system-images-35-24-default-x86_64-v1
       - name: Build Android example
-        if: matrix.target == 'android'
         working-directory: example
         run: flutter build apk --debug
       - name: Run Android unit tests
-        if: matrix.target == 'android'
         working-directory: example/android
         run: ./gradlew :barometer_flutter:testDebugUnitTest
       - name: Build Android example in umbrella mode
-        if: matrix.target == 'android'
         working-directory: example
         run: flutter build apk --debug -P barometerUmbrellaArtifact=com.tvrain.barometer:barometer:local -P "barometerUmbrellaRepository=$GITHUB_WORKSPACE/android/libs/maven"
       - name: Enable KVM for the Android emulator
-        if: matrix.target == 'android'
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
@@ -81,7 +78,6 @@ jobs:
       # The runner action runs each script line as its own command, so the umbrella
       # properties are set on the line that uses them.
       - name: Run integration test on an API 35 Android emulator
-        if: matrix.target == 'android'
         timeout-minutes: 60
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         with:
@@ -97,7 +93,6 @@ jobs:
             bash ../scripts/integration-test.sh emulator-5554
             ORG_GRADLE_PROJECT_barometerUmbrellaArtifact=com.tvrain.barometer:barometer:local ORG_GRADLE_PROJECT_barometerUmbrellaRepository="$GITHUB_WORKSPACE/android/libs/maven" bash ../scripts/integration-test.sh emulator-5554
       - name: Run integration test on an API 24 Android emulator
-        if: matrix.target == 'android'
         timeout-minutes: 60
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         with:
@@ -112,24 +107,73 @@ jobs:
             adb shell getprop ro.product.cpu.abi
             bash ../scripts/integration-test.sh emulator-5554
             ORG_GRADLE_PROJECT_barometerUmbrellaArtifact=com.tvrain.barometer:barometer:local ORG_GRADLE_PROJECT_barometerUmbrellaRepository="$GITHUB_WORKSPACE/android/libs/maven" bash ../scripts/integration-test.sh emulator-5554
+      - name: Check tracked files remain unchanged
+        run: git diff --exit-code
 
-      # iOS: the device and simulator builds, then the Swift XCTests and the example's
-      # integration test on an `iPhone <number>` simulator of the newest iOS runtime on the
-      # runner and of the oldest runtime installed, in standalone mode, and on the newest in
-      # umbrella mode. The integration test runs from XCTest through the integration_test
-      # plugin's native runner, not `flutter test`, whose simulator log stream can miss the
-      # application's VM service (docs/apple-validation.md).
+  # iOS, in three parallel jobs on an `iPhone <number>` simulator: the newest iOS runtime
+  # on the runner, the oldest runtime Xcode offers for download, and the newest in
+  # umbrella mode. Each runs the Swift XCTests and then the example's integration test,
+  # which runs from XCTest through the integration_test plugin's native runner, not
+  # `flutter test`, whose simulator log stream can miss the application's VM service
+  # (docs/apple-validation.md).
+  apple:
+    name: Apple (${{ matrix.variant }})
+    if: inputs.platforms != 'android'
+    runs-on: macos-15
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        variant:
+          - newest
+          - oldest
+          - umbrella
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Report Apple toolchain
+        run: |
+          xcodebuild -version
+          pod --version
+          xcrun simctl list runtimes ios
+      - name: Prepare build
+        uses: ./.github/actions/prepare
+        with:
+          target: apple
+          go-version: ${{ env.GO_VERSION }}
+          flutter-version: ${{ env.FLUTTER_VERSION }}
       - name: Build iOS example
-        if: matrix.target == 'apple'
+        if: matrix.variant == 'newest'
         working-directory: example
         run: |
           flutter build ios --debug --no-codesign
           flutter build ios --debug --simulator
+      - name: Build iOS example for the simulator
+        if: matrix.variant == 'oldest'
+        working-directory: example
+        run: flutter build ios --debug --simulator
+      # The standalone library stands in for an umbrella artifact: it binds the same facade.
+      - name: Build iOS example in umbrella mode
+        if: matrix.variant == 'umbrella'
+        working-directory: example
+        run: |
+          echo "BAROMETER_FLUTTER_UMBRELLA_MODULE=Barometer" >> "$GITHUB_ENV"
+          export BAROMETER_FLUTTER_UMBRELLA_MODULE=Barometer
+          mkdir -p ios/umbrella/Frameworks
+          ln -s ../../../../ios/Frameworks/Barometer.xcframework ios/umbrella/Frameworks/Barometer.xcframework
+          flutter pub get
+          # pod install needs the iOS engine artifacts, which no earlier build in this job fetched.
+          flutter precache --ios
+          (cd ios && pod install)
+          grep -q 'barometer_flutter/Umbrella' ios/Podfile.lock
+          flutter build ios --debug --simulator
+          # The plugin is linked statically and embeds no library of its own.
+          test ! -e build/ios/iphonesimulator/Runner.app/Frameworks/barometer_flutter.framework
       # The runner image has no runtime older than iOS 18; Xcode offers some older ones for
       # download. Install the oldest one offered, back to the iOS 15 deployment target, and
       # create an iPhone simulator for it.
       - name: Install the oldest iOS runtime offered
-        if: matrix.target == 'apple'
+        if: matrix.variant == 'oldest'
         timeout-minutes: 20
         run: |
           for version in 15.0 15.2 15.4 15.5 16.0 16.1 16.2 16.4 17.0; do
@@ -142,77 +186,31 @@ jobs:
             xcrun simctl create "$type" "$type" "$runtime"
           fi
           xcrun simctl list runtimes ios
-      - name: Select iOS simulators
-        if: matrix.target == 'apple'
+      - name: Select iOS simulator
+        env:
+          PICK: ${{ matrix.variant == 'oldest' && 'first' || 'last' }}
         run: |
           devices=$(xcrun simctl list devices available -j | jq -c '[.devices | to_entries[] | select(.key | test("iOS")) | .key as $runtime | .value[] | select(.name | test("^iPhone [0-9]+$")) | {udid, runtime: $runtime, name}] | sort_by(.runtime | split("-")[1:] | map(tonumber))')
-          jq -r '"newest: \(last | .runtime) \(last | .name)", "oldest: \(first | .runtime) \(first | .name)"' <<<"$devices"
-          echo "SIM_NEWEST=$(jq -r 'last | .udid' <<<"$devices")" >> "$GITHUB_ENV"
-          echo "SIM_OLDEST=$(jq -r 'first | .udid' <<<"$devices")" >> "$GITHUB_ENV"
-      # The XCTests run before the integration tests, which leave the Xcode configuration
+          jq -r "$PICK | \"${{ matrix.variant }}: \\(.runtime) \\(.name)\"" <<<"$devices"
+          echo "SIM_UDID=$(jq -r "$PICK | .udid" <<<"$devices")" >> "$GITHUB_ENV"
+      # The XCTests run before the integration test, which leaves the Xcode configuration
       # pointing at the test's entry point.
-      - name: Run XCTests on the newest and oldest iOS runtimes
-        if: matrix.target == 'apple'
-        timeout-minutes: 50
-        working-directory: example/ios
-        run: |
-          for udid in "$SIM_NEWEST" "$SIM_OLDEST"; do
-            xcrun simctl bootstatus "$udid" -b > /dev/null
-            result="$RUNNER_TEMP/xctests-$udid.xcresult"
-            status=0
-            xcodebuild test -quiet -workspace Runner.xcworkspace -scheme Runner -destination "platform=iOS Simulator,arch=arm64,id=$udid" -only-testing:RunnerTests -parallel-testing-enabled NO -resultBundlePath "$result" || status=$?
-            xcrun xcresulttool get test-results summary --path "$result" --compact | jq -c '{result, totalTestCount, passedTests, failedTests, skippedTests, device: [.devicesAndConfigurations[].device | "\(.deviceName) \(.osVersion)"]}'
-            xcrun xcresulttool get test-results tests --path "$result" --compact | jq -r '.. | objects | select(.nodeType? == "Failure Message") | .name'
-            xcrun simctl shutdown "$udid"
-            [ "$status" -eq 0 ] || exit "$status"
-          done
-      - name: Run integration test on the newest and oldest iOS runtimes
-        if: matrix.target == 'apple'
-        timeout-minutes: 45
-        working-directory: example
-        run: |
-          for udid in "$SIM_NEWEST" "$SIM_OLDEST"; do
-            xcrun simctl bootstatus "$udid" -b > /dev/null
-            bash ../scripts/integration-test.sh "$udid"
-            xcrun simctl shutdown "$udid"
-          done
-      - name: Check tracked files remain unchanged
-        run: git diff --exit-code
-      # Umbrella mode, run last because pod install may rewrite the Xcode project. The
-      # standalone library stands in for an umbrella artifact: it binds the same facade.
-      - name: Build iOS example in umbrella mode
-        if: matrix.target == 'apple'
-        working-directory: example
-        env:
-          BAROMETER_FLUTTER_UMBRELLA_MODULE: Barometer
-        run: |
-          mkdir -p ios/umbrella/Frameworks
-          ln -s ../../../../ios/Frameworks/Barometer.xcframework ios/umbrella/Frameworks/Barometer.xcframework
-          flutter clean
-          flutter pub get
-          (cd ios && pod install)
-          grep -q 'barometer_flutter/Umbrella' ios/Podfile.lock
-          flutter build ios --debug --simulator
-          # The plugin is linked statically and embeds no library of its own.
-          test ! -e build/ios/iphonesimulator/Runner.app/Frameworks/barometer_flutter.framework
-      - name: Run XCTests in umbrella mode
-        if: matrix.target == 'apple'
+      - name: Run XCTests
         timeout-minutes: 30
         working-directory: example/ios
-        env:
-          BAROMETER_FLUTTER_UMBRELLA_MODULE: Barometer
         run: |
-          xcrun simctl bootstatus "$SIM_NEWEST" -b > /dev/null
-          result="$RUNNER_TEMP/xctests-umbrella.xcresult"
+          xcrun simctl bootstatus "$SIM_UDID" -b > /dev/null
+          result="$RUNNER_TEMP/xctests.xcresult"
           status=0
-          xcodebuild test -quiet -workspace Runner.xcworkspace -scheme Runner -destination "platform=iOS Simulator,arch=arm64,id=$SIM_NEWEST" -only-testing:RunnerTests -parallel-testing-enabled NO -resultBundlePath "$result" || status=$?
+          xcodebuild test -quiet -workspace Runner.xcworkspace -scheme Runner -destination "platform=iOS Simulator,arch=arm64,id=$SIM_UDID" -only-testing:RunnerTests -parallel-testing-enabled NO -resultBundlePath "$result" || status=$?
           xcrun xcresulttool get test-results summary --path "$result" --compact | jq -c '{result, totalTestCount, passedTests, failedTests, skippedTests, device: [.devicesAndConfigurations[].device | "\(.deviceName) \(.osVersion)"]}'
           xcrun xcresulttool get test-results tests --path "$result" --compact | jq -r '.. | objects | select(.nodeType? == "Failure Message") | .name'
           exit "$status"
-      - name: Run integration test in umbrella mode
-        if: matrix.target == 'apple'
+      - name: Run integration test
         timeout-minutes: 25
         working-directory: example
-        env:
-          BAROMETER_FLUTTER_UMBRELLA_MODULE: Barometer
-        run: bash ../scripts/integration-test.sh "$SIM_NEWEST"
+        run: bash ../scripts/integration-test.sh "$SIM_UDID"
+      # Umbrella mode adds the framework link and lets pod install rewrite the Xcode project.
+      - name: Check tracked files remain unchanged
+        if: matrix.variant != 'umbrella'
+        run: git diff --exit-code
