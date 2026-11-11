@@ -1,0 +1,46 @@
+name: Prepare device build
+description: Set up Go and Flutter and build, or restore, the native Barometer library for one platform.
+
+inputs:
+  target:
+    description: android or apple
+    required: true
+  go-version:
+    description: Go version for the native build
+    required: true
+  flutter-version:
+    description: Flutter version (a tag of flutter/flutter)
+    required: true
+
+runs:
+  using: composite
+  steps:
+    # The library depends only on the barometer-go pin, the build script and the Go
+    # version, so a library built once is reused until one of them changes.
+    - name: Restore native Barometer library
+      id: native
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ inputs.target == 'android' && 'android/libs' || 'ios/Frameworks' }}
+        key: barometer-native-${{ inputs.target }}-${{ runner.os }}-${{ runner.arch }}-go${{ inputs.go-version }}-${{ hashFiles('scripts/barometer-go.revision', 'scripts/build-native.sh') }}
+    - name: Set up Go
+      if: steps.native.outputs.cache-hit != 'true'
+      uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+      with:
+        go-version: ${{ inputs.go-version }}
+        cache: false
+    - name: Build native Barometer library
+      if: steps.native.outputs.cache-hit != 'true'
+      shell: bash
+      run: bash scripts/build-native.sh ${{ inputs.target }}
+    - name: Report native Barometer library
+      shell: bash
+      run: cat ${{ inputs.target == 'android' && 'android/libs' || 'ios/Frameworks' }}/*.build-info.txt
+    - name: Set up Flutter
+      shell: bash
+      run: |
+        git clone --quiet --depth 1 --branch "${{ inputs.flutter-version }}" https://github.com/flutter/flutter.git "$RUNNER_TEMP/flutter"
+        echo "$RUNNER_TEMP/flutter/bin" >> "$GITHUB_PATH"
+    - name: Report Flutter version
+      shell: bash
+      run: flutter --version
