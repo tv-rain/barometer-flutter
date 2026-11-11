@@ -23,7 +23,24 @@ slices:
 status: compiled only; not a release, not platform support
 ```
 
-[Strict JSON](#strict-json), [Reinstall and Backup](#reinstall-and-backup), [Durability, Full Disk and the Nine Measurements](#durability-full-disk-and-the-nine-measurements), [Host Policy, Proxy and Signed Remote Tasks](#host-policy-proxy-and-signed-remote-tasks) and [Signals, Lifecycle and Linkage Keys](#signals-lifecycle-and-linkage-keys) were recorded with this library. [Trust Roots Inside the Application](#trust-roots-inside-the-application) was recorded at the earlier pin `d7a5440ef35accc89a16a3074c586fa3d9f0308a`, and the sections after it at `c49695c9406d64d34d247de827ae2b0343634640` and, where they say so, `52789565c85f9d14d7b2ce1d5e42f85b11cea753`; their build-info differs from the one above only in the `commit` line.
+[Specification Findings](#specification-findings), [Strict JSON](#strict-json), [Reinstall and Backup](#reinstall-and-backup), [Durability, Full Disk and the Nine Measurements](#durability-full-disk-and-the-nine-measurements), [Host Policy, Proxy and Signed Remote Tasks](#host-policy-proxy-and-signed-remote-tasks) and [Signals, Lifecycle and Linkage Keys](#signals-lifecycle-and-linkage-keys) were recorded with this library. [Trust Roots Inside the Application](#trust-roots-inside-the-application) was recorded at the earlier pin `d7a5440ef35accc89a16a3074c586fa3d9f0308a`, and the sections after it at `c49695c9406d64d34d247de827ae2b0343634640` and, where they say so, `52789565c85f9d14d7b2ce1d5e42f85b11cea753`; their build-info differs from the one above only in the `commit` line.
+
+## Specification Findings
+
+Run on 2026-11-11 from `example/android` with `./gradlew :barometer_flutter:connectedDebugAndroidTest`, with the library above, on the API 24 and API 35 emulators of [Reinstall and Backup](#reinstall-and-backup) started headless. `FindingAdoptionDeviceTest` (2 tests) drives the channel host against the facade with signed remote packages of a synthetic issuer and checks the answers Dart receives for the Go specification findings whose binding adoption is recorded in [`barometer-go`](https://github.com/tv-rain/barometer-go/blob/main/docs/specification-issues.md#binding-adoption-of-findings):
+
+- **Admission classes.** `task_unsupported` for an unregistered test version, `task_limit_exceeded` for a 129-byte `task_id` and for a limit above the policy, `task_expired`, `task_issuer_not_authorized` for a test the issuer is not permitted, `target_not_registered`, `task_schema_invalid` for `risk_factors: []` at `medium` risk, for `timezone: UTC` and for NET-01 on the proxy path, `task_id_conflict` and `task_source_unauthenticated`; one risk factor, `timezone: local` and NET-01 on the direct path are admitted.
+- **Execution states.** Over a loopback proxy that never contacts the target: a proxy-path TCP-01 task with byte and connection limits of 1 completes, since the `CONNECT` exchange is not counted, with `network_context` and `measurement`; after `clearProxy` a proxy-path task is `not_run` without either; a run cancelled with `cancelRun` once a stalling proxy received its `CONNECT` is `incomplete` with `cancelled_by_host` and `network_context` but no `measurement`. Each bundle is read twice through `nextBundle` with the same bytes before it is acknowledged.
+
+`TrustRootDeviceTest.testsThatVerifyCertificatesNeedARootSet` admits TLS-01, HTTP-01, NET-03, DNS-04, DNS-03 and NET-05 through the channel host. In the `no-store` scenario of [Trust Roots Inside the Application](#trust-roots-inside-the-application) each is `task_unsupported` and TCP-01 is admitted; in the `platform` scenario each gets past the test lookup to another class.
+
+| Run | API 24 | API 35 |
+|---|---|---|
+| `FindingAdoptionDeviceTest` and `TrustRootDeviceTest`, stores unchanged | 4 of 4 passed | 4 of 4 passed |
+| `TrustRootDeviceTest` in the `no-store` scenario | 1 passed, 1 skipped (`rootSetFollowsThePlatformStores`) | 1 passed, 1 skipped |
+| Full instrumented suite | 54 tests: 47 passed, 7 skipped, none failed | Not rerun |
+
+The skips of the full suite are those of the earlier API 24 runs: `ClearStorageDeviceTest` and `ReinstallBackupDeviceTest` (2 each), which run only from their host scripts, the `NetworkSignalDeviceTest` Wi-Fi and airplane-mode cases, which need the host script below API 30, and `LinkageKeysDeviceTest.noKeyStoreBeforeApi23`. The example's integration test passed on the API 24 emulator, including its check that an admission class from Go and a native code reach Dart unchanged. `flutter test` passed for the plugin, including the Dart checks that every admission class and a bundle with each execution state pass through the method-channel codec unchanged. No result was printed or recorded.
 
 ## Strict JSON
 
@@ -185,6 +202,7 @@ bash scripts/android-trust-scenario.sh reset
 | `user-ca` | Synthetic CA installed in the user store `/data/misc/user/0/cacerts-added` and in `/data/misc/keychain/certs-added`, which Go's own loader reads | `trusted`, `untrusted`: the user-installed CA is rejected | Passed | Passed |
 | `updatable-only` | The updatable store, as applications see it, holds only the synthetic CA | `untrusted`, `trusted`: the root set follows the updatable store | Not applicable (no updatable store) | Passed |
 | `system-only` | The system store, as applications see it, holds only the synthetic CA | API 24: `untrusted`, `trusted` (the system store is the root set); API 35: `trusted`, `untrusted` (the system store is not read while the updatable store yields certificates) | Passed | Passed |
+| `no-store` | Both stores, as applications see them, are empty directories | No root set: the handshakes are not run; TLS-01, HTTP-01, NET-03, DNS-04, DNS-03 and NET-05 are `task_unsupported` at admission through the channel host, and TCP-01 is admitted | Passed (2026-11-11) | Passed (2026-11-11) |
 
 Run on 2026-11-09 with the library above on the emulators of the previous table; build fingerprints `Android/sdk_phone_arm64/generic_arm64:7.0/NYC/8695085:userdebug/test-keys` and `Android/sdk_phone64_arm64/emu64a:15/AE3A.240806.019/12368160:userdebug/test-keys`. A store is replaced by a bind mount, labeled like the store, in the zygote mount namespaces, so the application sees it while the system and APEX images stay unchanged; on API 24, which has no `nsenter`, the mount is made in the shell's namespace and propagates to the zygote. As a control, the `updatable-only` state on API 35 run with the `platform` expectations failed on the direct handshake. No result was printed or recorded.
 

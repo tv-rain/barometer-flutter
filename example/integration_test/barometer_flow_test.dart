@@ -1,4 +1,7 @@
+import 'dart:convert';
 import 'dart:io';
+
+import 'package:barometer_flutter/barometer_flutter.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -56,5 +59,29 @@ void main() {
       'dns-01: results=1 execution=completed observations=dns_query '
       'platform=$platform pending_after_ack=no',
     );
+  });
+
+  testWidgets('admission and native codes reach Dart unchanged', (
+    tester,
+  ) async {
+    final client = BarometerClient();
+    try {
+      await client.initialize({});
+    } on BarometerException catch (e) {
+      if (e.code != 'already_initialized') rethrow;
+    }
+    Matcher code(String code) =>
+        isA<BarometerException>().having((e) => e.code, 'code', code);
+    // An unsigned package reaches Go's admission, whose class is returned as is.
+    await expectLater(
+      client.admitTask(installRemoteTask(utf8.encode('{}'))),
+      throwsA(code('task_source_unauthenticated')),
+    );
+    // A missing embedded task is refused by the native layer before Go.
+    await expectLater(
+      client.admitTask(embeddedTask('missing')),
+      throwsA(code('delivery_unavailable')),
+    );
+    expect(await client.nextBundle(), isNull);
   });
 }

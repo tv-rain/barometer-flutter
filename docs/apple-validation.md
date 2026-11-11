@@ -6,7 +6,7 @@ No measurement result, outcome, device identifier, account, network name or addr
 
 ## Library Under Test
 
-The `Barometer.xcframework.build-info.txt` written by `scripts/build-native.sh apple` at the current pin, used by [Strict JSON](#strict-json), [Durability, Storage Full and the Nine Measurements](#durability-storage-full-and-the-nine-measurements), [Trust Store on the Device](#trust-store-on-the-device), [Oldest Runtime and `x86_64` Simulator](#oldest-runtime-and-x86_64-simulator), [Host Policy, Proxy and Signed Remote Tasks](#host-policy-proxy-and-signed-remote-tasks) and [Signals, Lifecycle and Linkage Keys](#signals-lifecycle-and-linkage-keys):
+The `Barometer.xcframework.build-info.txt` written by `scripts/build-native.sh apple` at the current pin, used by [Specification Findings](#specification-findings), [Strict JSON](#strict-json), [Durability, Storage Full and the Nine Measurements](#durability-storage-full-and-the-nine-measurements), [Trust Store on the Device](#trust-store-on-the-device), [Oldest Runtime and `x86_64` Simulator](#oldest-runtime-and-x86_64-simulator), [Host Policy, Proxy and Signed Remote Tasks](#host-policy-proxy-and-signed-remote-tasks) and [Signals, Lifecycle and Linkage Keys](#signals-lifecycle-and-linkage-keys):
 
 ```text
 artifact: Barometer.xcframework
@@ -41,6 +41,16 @@ slices:
   ios-arm64_x86_64-simulator
 status: compiled only; not a release, not platform support
 ```
+
+## Specification Findings
+
+Run on 2026-11-11 on an Apple silicon host with Xcode 27.0 and Flutter 3.47.6, with the library above, on an iPhone 17 simulator of the installed iOS 26.0 runtime. The XCTests ran from `example/ios` with the command of [Adapters, TCP-01 and DNS-01](#adapters-tcp-01-and-dns-01) after `flutter build ios --debug --simulator`, limited to `FindingAdoptionTests`: 2 tests, both passed. The tests drive the channel host against the facade with signed remote packages of a synthetic issuer and check the answers Dart receives for the Go specification findings whose binding adoption is recorded in [`barometer-go`](https://github.com/tv-rain/barometer-go/blob/main/docs/specification-issues.md#binding-adoption-of-findings), with the same cases as the [Android record](android-validation.md#specification-findings):
+
+- **Admission classes.** `task_unsupported`, `task_limit_exceeded` (twice), `task_expired`, `task_issuer_not_authorized`, `target_not_registered`, `task_schema_invalid` for `risk_factors: []`, `timezone: UTC` and NET-01 on the proxy path, `task_id_conflict` and `task_source_unauthenticated`, with the admitted controls.
+- **Execution states.** Over loopback proxies that never contact a target: a proxy-path TCP-01 task with byte and connection limits of 1 completes with `network_context` and `measurement`; after `clearProxy` a proxy-path task is `not_run` without either; a run cancelled once a stalling proxy received its `CONNECT` is `incomplete` with `cancelled_by_host` and `network_context` but no `measurement`. Each bundle is read twice through `nextBundle` with the same bytes before it is acknowledged.
+- **Validation.** iOS has no validation source, so a task with `require_validated` is never due: `startRun` returns `run_not_due`, no bundle is pending and the proxy sees no `CONNECT`.
+
+The first `startRun` after `initialize` returned `run_not_due` in one of three runs and the run started on a later call; the test waits up to ten seconds for the first run to become due. The cause was not established. No result was printed or recorded. The full XCTest suite and the example's integration test, which checks that an admission class and a native code reach Dart, run in the device build workflow.
 
 ## Strict JSON
 
