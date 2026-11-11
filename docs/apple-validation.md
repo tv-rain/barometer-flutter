@@ -6,7 +6,7 @@ No measurement result, outcome, device identifier, account, network name or addr
 
 ## Library Under Test
 
-The `Barometer.xcframework.build-info.txt` written by `scripts/build-native.sh apple` at the current pin, used by [Specification Findings](#specification-findings), [Strict JSON](#strict-json), [Durability, Storage Full and the Nine Measurements](#durability-storage-full-and-the-nine-measurements), [Trust Store on the Device](#trust-store-on-the-device), [Oldest Runtime and `x86_64` Simulator](#oldest-runtime-and-x86_64-simulator), [Host Policy, Proxy and Signed Remote Tasks](#host-policy-proxy-and-signed-remote-tasks) and [Signals, Lifecycle and Linkage Keys](#signals-lifecycle-and-linkage-keys):
+The `Barometer.xcframework.build-info.txt` written by `scripts/build-native.sh apple` at the current pin, used by [Proxy Host Integration](#proxy-host-integration), [Specification Findings](#specification-findings), [Strict JSON](#strict-json), [Durability, Storage Full and the Nine Measurements](#durability-storage-full-and-the-nine-measurements), [Trust Store on the Device](#trust-store-on-the-device), [Oldest Runtime and `x86_64` Simulator](#oldest-runtime-and-x86_64-simulator), [Host Policy, Proxy and Signed Remote Tasks](#host-policy-proxy-and-signed-remote-tasks) and [Signals, Lifecycle and Linkage Keys](#signals-lifecycle-and-linkage-keys):
 
 ```text
 artifact: Barometer.xcframework
@@ -41,6 +41,10 @@ slices:
   ios-arm64_x86_64-simulator
 status: compiled only; not a release, not platform support
 ```
+
+## Proxy Host Integration
+
+Run on 2026-11-11 on an Apple silicon host with Xcode 27.0 and Flutter 3.47.6, with the library above, on an iPhone 18 Pro simulator of the installed iOS 27.0 runtime, for the [proxy host integration mapping](proxy-host-integration.md). The XCTests ran from `example/ios` after `flutter build ios --config-only --simulator --debug`, limited to `ProxyTests`, `ChannelTests` and `FindingAdoptionTests`: 19 tests, all passed. `ProxyTests.testProxyCodesReachTheChannel` makes the calls of the [Android record](android-validation.md#proxy-host-integration) through the channel host: `proxy_rejected` for an unapproved connection code, a proxy object carrying `primary_endpoint` and one without `port`, with the initial proxy kept; `cleanup_incomplete` from `setProxy` and `clearProxy` while the host's record store is held, with no `CONNECT` to the replacement; and `close` once the store is released. No result was printed or recorded. The full XCTest suite on the newest and oldest runtimes runs in the device build workflow.
 
 ## Specification Findings
 

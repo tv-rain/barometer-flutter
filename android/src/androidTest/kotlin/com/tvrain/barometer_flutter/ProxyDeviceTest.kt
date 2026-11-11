@@ -9,6 +9,7 @@ import java.util.concurrent.TimeUnit
 import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -20,8 +21,9 @@ import org.junit.runner.RunWith
  * TCP-01 attempt; an unapproved or malformed configuration is `proxy_rejected` and keeps the
  * previous proxy; clearing it leaves proxy-path runs without a proxy; and a proxy generation
  * whose cancelled attempt cannot store its result within the cleanup bound, because the record
- * store is held, returns `cleanup_incomplete` and blocks the client until it is closed. No
- * result is printed.
+ * store is held, returns `cleanup_incomplete` and blocks the client until it is closed. The
+ * last test makes the same calls through the channel host and checks the codes Dart receives.
+ * No result is printed.
  */
 @RunWith(AndroidJUnit4::class)
 class ProxyDeviceTest {
@@ -143,6 +145,67 @@ class ProxyDeviceTest {
             closeables.remove(owner)
             closeables.remove(store)
             store.close()
+        }
+    }
+
+    /**
+     * The proxy codes through the channel host, as Dart receives them: `setProxy` returns
+     * `proxy_rejected` for an unapproved connection code, a proxy object carrying a context
+     * endpoint and one without a port, and the initial proxy stays configured; with an attempt
+     * waiting on it and the host's record store held, `setProxy` and `clearProxy` return
+     * `cleanup_incomplete`; `close` succeeds once the store is released.
+     */
+    @Test
+    fun proxyCodesReachTheChannel() {
+        val now = System.currentTimeMillis()
+        val signer = TestSigner("proxy-key", DeviceTestDocuments.REMOTE_ISSUER, 0x43)
+        val document = DeviceTestDocuments.withRemoteIssuer(
+            DeviceTestDocuments.trustDocument(
+                "TCP-01", DeviceTestDocuments.TCP_TUPLE, listOf(DeviceTestDocuments.CONNECTION_CODE),
+            ),
+            signer.key(now - 3_600_000L, now + 86_400_000L),
+        )
+        val host = BarometerHost(context, HostPolicy { document }) {
+            RecordStore.open(context, SCOPE).also { store = it }
+        }
+        val channel = ChannelCaller(host)
+        val stalling = StallingProxy().also { closeables.add(it) }
+        val working = AnsweringProxy().also { closeables.add(it) }
+        try {
+            assertNull(channel.initialize(JSONObject().put("proxy", stalling.config()).toString()))
+            val rejected = listOf(
+                working.config("unapproved_code"),
+                working.config().put("primary_endpoint", "https://9.9.9.9/network-context"),
+                JSONObject().put("host", "127.0.0.1").put("connection_code", DeviceTestDocuments.CONNECTION_CODE),
+            )
+            for (proxy in rejected) {
+                assertEquals(proxy.toString(), "proxy_rejected", channel.code("setProxy", mapOf("proxy" to proxy.toString())))
+            }
+
+            // The initial proxy is kept: the next proxy-path attempt reaches it and waits there.
+            val task = DeviceTestDocuments.runTask("channel-drain", "TCP-01", DeviceTestDocuments.TCP_INPUT, "proxy")
+            val admitted = channel.admitRemote(signer.sign(task.toByteArray(), now - 60_000L))
+            assertNull(admitted.code)
+            val run = channel.value("startRun", mapOf("task" to admitted.value)) as String
+            assertTrue("proxy not reached", DeviceShell.await(10) { stalling.connects.get() == 1 })
+            assertEquals(mapOf("state" to "active"), channel.value("runState", mapOf("run" to run)))
+
+            // Hold the host's record store so the cancelled attempt cannot store its result in time.
+            val held = CountDownLatch(1)
+            val release = CountDownLatch(1)
+            val holder = Thread {
+                runCatching { store.serial(30_000) { held.countDown(); release.await(20, TimeUnit.SECONDS) } }
+            }.apply { start() }
+            assertTrue(held.await(10, TimeUnit.SECONDS))
+            assertEquals("cleanup_incomplete", channel.code("setProxy", mapOf("proxy" to working.config().toString())))
+            assertEquals("cleanup_incomplete", channel.code("clearProxy"))
+            assertEquals(0, working.targets.size)
+
+            release.countDown()
+            holder.join(10_000)
+            assertNull(channel.code("close"))
+        } finally {
+            host.detach()
         }
     }
 

@@ -28,10 +28,14 @@ import java.util.concurrent.TimeUnit
  * A failed `initialize` keeps the client it created, so the host can retry it or recover with
  * `clearMeasurementData` after `clearing_incomplete`. A `close` that fails keeps the client
  * too, so it can be retried.
+ *
+ * [openStore] opens the record store; the plugin uses the `default` scope, and tests replace it
+ * to reach the store the host opened.
  */
 internal class BarometerHost(
     private val context: Context,
     private val policy: HostPolicy = BarometerFlutterPlugin.hostPolicy(context),
+    private val openStore: () -> RecordStore = { RecordStore.open(context) },
 ) {
     /** A call's outcome, delivered on the main looper. */
     interface Reply {
@@ -160,7 +164,7 @@ internal class BarometerHost(
         // A replacement keeps the open client's record store.
         val opened = store.takeIf { current != null }
         val records = opened ?: try {
-            RecordStore.open(context)
+            openStore()
         } catch (e: RecordStoreException) {
             throw CodeException(ERR_STORAGE)
         }

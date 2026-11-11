@@ -299,6 +299,30 @@ void main() {
     }
   });
 
+  test('proxy codes reach Dart unchanged', () async {
+    // The codes the facade returns from SetProxy and ClearProxy, as the native
+    // host forwards them.
+    final client = BarometerClient();
+    for (final code in ['proxy_rejected', 'cleanup_incomplete']) {
+      answers['setProxy'] = (_) => throw PlatformException(code: code);
+      answers['clearProxy'] = (_) => throw PlatformException(code: code);
+      await expectLater(
+        client.setProxy({
+          'host': '127.0.0.1',
+          'port': 54321,
+          'connection_code': 'outline_mobileproxy',
+        }),
+        throwsA(_code(code)),
+        reason: code,
+      );
+      await expectLater(
+        client.clearProxy(),
+        throwsA(_code(code)),
+        reason: code,
+      );
+    }
+  });
+
   test('execution states and context values reach Dart unchanged', () async {
     // A bundle shaped like the native library's: a completed result with
     // Network Context, a not_run result without it, an incomplete one without

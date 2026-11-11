@@ -8,7 +8,8 @@ import XCTest
 /// an unapproved or malformed configuration is `proxy_rejected` and keeps the previous proxy;
 /// clearing it leaves proxy-path runs without a proxy; and a proxy generation whose cancelled
 /// attempt cannot store its result within the cleanup bound, because the record store is held,
-/// returns `cleanup_incomplete` and blocks the client until it is closed. No result is printed.
+/// returns `cleanup_incomplete` and blocks the client until it is closed. The last test makes the
+/// same calls through the channel host and checks the codes Dart receives. No result is printed.
 final class ProxyTests: XCTestCase {
   private static let scope = "proxy-test"
 
@@ -157,5 +158,89 @@ final class ProxyTests: XCTestCase {
         self.stores.removeAll { $0 === store }
       }
     }
+  }
+
+  /// The proxy codes through the channel host, as Dart receives them: `setProxy` returns
+  /// `proxy_rejected` for an unapproved connection code, a proxy object carrying a context
+  /// endpoint and one without a port, and the initial proxy stays configured; with an attempt
+  /// waiting on it and the host's record store held, `setProxy` and `clearProxy` return
+  /// `cleanup_incomplete`; `close` succeeds once the store is released.
+  func testProxyCodesReachTheChannel() throws {
+    let now = Date()
+    let signer = try TestSigner(keyID: "proxy-key", issuerID: TestDocuments.remoteIssuer, label: 0x43)
+    let document = try TestDocuments.withRemoteIssuer(
+      try TestDocuments.trustDocument(),
+      keys: [signer.keyRecord(notBefore: now.addingTimeInterval(-3600), notAfter: now.addingTimeInterval(86_400))])
+    let storesBase = base.appendingPathComponent("channel-stores", isDirectory: true)
+    var opened: RecordStore?
+    let host = BarometerHost(
+      policy: HostPolicy { document },
+      openStore: {
+        let store = try RecordStore.open(base: storesBase, scope: Self.scope, isMainThread: { Thread.isMainThread })
+        opened = store
+        return store
+      },
+      background: FakeBackgroundTasks())
+    defer { host.detach() }
+    let channel = ChannelCaller(host)
+    let stall = try StallingProxy()
+    stalling.append(stall)
+    let working = try AnsweringProxy()
+    answering.append(working)
+
+    let initial: [String: Any] = [
+      "host": "127.0.0.1", "port": stall.port, "connection_code": TestDocuments.connectionCode,
+    ]
+    XCTAssertNil(channel.initialize(try TestDocuments.json(["proxy": initial])))
+    var withEndpoint = working.config()
+    withEndpoint["primary_endpoint"] = "https://9.9.9.9/network-context"
+    let rejected: [[String: Any]] = [
+      working.config(code: "unapproved_code"),
+      withEndpoint,
+      ["host": "127.0.0.1", "connection_code": TestDocuments.connectionCode],
+    ]
+    for proxy in rejected {
+      let text = try TestDocuments.json(proxy)
+      XCTAssertEqual(channel.code("setProxy", ["proxy": text]), "proxy_rejected", text)
+    }
+
+    // The initial proxy is kept: the next proxy-path attempt reaches it and waits there. The
+    // first start after initialize can find the run not yet due while the adapters take their
+    // first readings; wait for that, for at most ten seconds.
+    let task = try TestDocuments.runTask("channel-drain", proxy: true)
+    let admitted = channel.admitRemote(try signer.sign(Data(task.utf8), issuedAt: now.addingTimeInterval(-60)))
+    XCTAssertNil(admitted.code)
+    let handle = try XCTUnwrap(admitted.value as? String)
+    var started = channel.call("startRun", ["task": handle])
+    let due = Date().addingTimeInterval(10)
+    while started.code == "run_not_due" && Date() < due {
+      RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+      started = channel.call("startRun", ["task": handle])
+    }
+    let run = try XCTUnwrap(started.value as? String, started.code ?? "")
+    XCTAssertTrue(waitUntil(10) { stall.connects == 1 }, "proxy not reached")
+    XCTAssertEqual(channel.state(run), "active")
+
+    // Hold the host's record store so the cancelled attempt cannot store its result in time.
+    let store = try XCTUnwrap(opened)
+    let held = DispatchSemaphore(value: 0)
+    let release = DispatchSemaphore(value: 0)
+    let holderDone = DispatchSemaphore(value: 0)
+    DispatchQueue.global().async {
+      _ = try? store.serial(30_000) {
+        held.signal()
+        _ = release.wait(timeout: .now() + 20)
+      }
+      holderDone.signal()
+    }
+    XCTAssertEqual(held.wait(timeout: .now() + 10), .success)
+    XCTAssertEqual(
+      channel.code("setProxy", ["proxy": try TestDocuments.json(working.config())]), "cleanup_incomplete")
+    XCTAssertEqual(channel.code("clearProxy"), "cleanup_incomplete")
+    XCTAssertTrue(working.targets.isEmpty)
+
+    release.signal()
+    XCTAssertEqual(holderDone.wait(timeout: .now() + 10), .success)
+    XCTAssertNil(channel.code("close"))
   }
 }
