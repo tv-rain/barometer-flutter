@@ -21,6 +21,7 @@
 		D0A72E2B2F00000000000001 /* LocalPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0A72E2A2F00000000000001 /* LocalPolicyTests.swift */; };
 		D0A72E3B2F00000000000001 /* ProxyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0A72E3A2F00000000000001 /* ProxyTests.swift */; };
 		D0A72E4B2F00000000000001 /* RemoteTaskTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0A72E4A2F00000000000001 /* RemoteTaskTests.swift */; };
+		D0A72EAB2F00000000000001 /* FindingAdoptionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0A72EAA2F00000000000001 /* FindingAdoptionTests.swift */; };
 		D0A72E5B2F00000000000001 /* TrustRootDeviceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0A72E5A2F00000000000001 /* TrustRootDeviceTests.swift */; };
 		D0A72D0B2F00000000000001 /* LinkageKeysTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0A72D0A2F00000000000001 /* LinkageKeysTests.swift */; };
 		D0A72E6B2F00000000000001 /* DurabilityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0A72E6A2F00000000000001 /* DurabilityTests.swift */; };
@@ -77,6 +78,7 @@
 		D0A72E2A2F00000000000001 /* LocalPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalPolicyTests.swift; sourceTree = "<group>"; };
 		D0A72E3A2F00000000000001 /* ProxyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProxyTests.swift; sourceTree = "<group>"; };
 		D0A72E4A2F00000000000001 /* RemoteTaskTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteTaskTests.swift; sourceTree = "<group>"; };
+		D0A72EAA2F00000000000001 /* FindingAdoptionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FindingAdoptionTests.swift; sourceTree = "<group>"; };
 		D0A72E5A2F00000000000001 /* TrustRootDeviceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrustRootDeviceTests.swift; sourceTree = "<group>"; };
 		D0A72D0A2F00000000000001 /* LinkageKeysTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LinkageKeysTests.swift; sourceTree = "<group>"; };
 		D0A72E6A2F00000000000001 /* DurabilityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DurabilityTests.swift; sourceTree = "<group>"; };
@@ -145,6 +147,7 @@
 				D0A72E2A2F00000000000001 /* LocalPolicyTests.swift */,
 				D0A72E3A2F00000000000001 /* ProxyTests.swift */,
 				D0A72E4A2F00000000000001 /* RemoteTaskTests.swift */,
+				D0A72EAA2F00000000000001 /* FindingAdoptionTests.swift */,
 				D0A72E5A2F00000000000001 /* TrustRootDeviceTests.swift */,
 				D0A72D0A2F00000000000001 /* LinkageKeysTests.swift */,
 				D0A72E6A2F00000000000001 /* DurabilityTests.swift */,
@@ -469,6 +472,7 @@
 				D0A72E2B2F00000000000001 /* LocalPolicyTests.swift in Sources */,
 				D0A72E3B2F00000000000001 /* ProxyTests.swift in Sources */,
 				D0A72E4B2F00000000000001 /* RemoteTaskTests.swift in Sources */,
+				D0A72EAB2F00000000000001 /* FindingAdoptionTests.swift in Sources */,
 				D0A72E5B2F00000000000001 /* TrustRootDeviceTests.swift in Sources */,
 				D0A72D0B2F00000000000001 /* LinkageKeysTests.swift in Sources */,
 				D0A72E6B2F00000000000001 /* DurabilityTests.swift in Sources */,

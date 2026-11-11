@@ -274,6 +274,66 @@ void main() {
     }
   });
 
+  test('admission classes reach Dart unchanged', () async {
+    // Every class Go's admission returns, as the native host forwards it.
+    const classes = [
+      'task_source_unauthenticated',
+      'task_issuer_not_authorized',
+      'task_policy_unavailable',
+      'task_trust_unavailable',
+      'task_expired',
+      'task_id_conflict',
+      'policy_rollback',
+      'target_not_registered',
+      'task_limit_exceeded',
+      'task_schema_invalid',
+      'task_unsupported',
+    ];
+    for (final code in classes) {
+      answers['admitTask'] = (_) => throw PlatformException(code: code);
+      await expectLater(
+        BarometerClient().admitTask(installRemoteTask(Uint8List(1))),
+        throwsA(_code(code)),
+        reason: code,
+      );
+    }
+  });
+
+  test('execution states and context values reach Dart unchanged', () async {
+    // A bundle shaped like the native library's: a completed result with
+    // Network Context, a not_run result without it, an incomplete one without
+    // a measurement, and the largest 64-bit integer.
+    const text =
+        '{"bundle_id":"b1","results":['
+        '{"execution":{"state":"completed"},"network_context":{"egress":'
+        '{"status":"unavailable"}},"measurement":{"n":9223372036854775807}},'
+        '{"execution":{"state":"not_run","reason":"constraints_unsatisfied"}},'
+        '{"execution":{"state":"incomplete","reason":"cancelled_by_host"},'
+        '"network_context":{"egress":{"status":"unavailable"}}}]}';
+    final raw = Uint8List.fromList(utf8.encode(text));
+    answers['nextBundle'] = (_) => raw;
+    final bundle = (await BarometerClient().nextBundle())!;
+    expect(bundle.bytes, raw);
+    final results = bundle.toJson()['results']! as List;
+    final [completed, notRun, incomplete] = results
+        .cast<Map<String, Object?>>();
+    expect(completed['execution'], {'state': 'completed'});
+    expect(completed['network_context'], {
+      'egress': {'status': 'unavailable'},
+    });
+    expect(completed['measurement'], {'n': 9223372036854775807});
+    expect(notRun.keys, ['execution']);
+    expect(notRun['execution'], {
+      'state': 'not_run',
+      'reason': 'constraints_unsatisfied',
+    });
+    expect(incomplete.containsKey('measurement'), isFalse);
+    expect(incomplete['execution'], {
+      'state': 'incomplete',
+      'reason': 'cancelled_by_host',
+    });
+  });
+
   test('a value that is not JSON fails before the channel', () async {
     await expectLater(
       BarometerClient().initialize({'x': Object()}),

@@ -11,6 +11,8 @@ set -euo pipefail
 #                   applications see it, with the synthetic CA alone (API 34 and later)
 #   system-only     replace the system store /system/etc/security/cacerts, as applications
 #                   see it, with the synthetic CA alone
+#   no-store        replace both stores, as applications see them, with an empty directory,
+#                   so that no root set can be loaded
 #   reset           undo all of the above
 #
 # A store is replaced by a bind mount in the zygote mount namespaces, labeled like the
@@ -30,8 +32,8 @@ updatable=/apex/com.android.conscrypt/cacerts
 system=/system/etc/security/cacerts
 
 case "$scenario" in
-  user-ca | updatable-only | system-only | reset) ;;
-  *) echo 'Usage: bash scripts/android-trust-scenario.sh user-ca|updatable-only|system-only|reset' >&2; exit 2 ;;
+  user-ca | updatable-only | system-only | no-store | reset) ;;
+  *) echo 'Usage: bash scripts/android-trust-scenario.sh user-ca|updatable-only|system-only|no-store|reset' >&2; exit 2 ;;
 esac
 
 qemu=$("$adb" shell 'getprop ro.kernel.qemu; getprop ro.boot.qemu' | tr -d '\r[:space:]')
@@ -87,11 +89,26 @@ case "$scenario" in
     "$adb" shell "for z in \$(pidof zygote64) \$(pidof zygote); do grep -q ' $target ' /proc/\$z/mountinfo; done" ||
       { echo "The zygote does not see the replaced store" >&2; exit 1; }
     ;;
+  no-store)
+    unmount_all
+    for target in "$updatable" "$system"; do
+      empty=$staging-empty${target//\//-}
+      "$adb" shell "[ -d $target ]" || continue
+      "$adb" shell "set -e
+        rm -rf $empty
+        mkdir -p $empty
+        chmod 755 $empty
+        chcon \$(ls -dZ $target | cut -d ' ' -f 1) $empty"
+      in_zygotes "mount -o bind $empty $target"
+      "$adb" shell "for z in \$(pidof zygote64) \$(pidof zygote); do grep -q ' $target ' /proc/\$z/mountinfo; done" ||
+        { echo "The zygote does not see the replaced store" >&2; exit 1; }
+    done
+    ;;
   reset)
     unmount_all
     "$adb" shell "rm -f /data/misc/user/0/cacerts-added/$name /data/misc/keychain/certs-added/$name
       rmdir /data/misc/keychain/certs-added 2>/dev/null || true
-      rm -rf $staging"
+      rm -rf $staging $staging-empty-*"
     ;;
 esac
 "$adb" shell "rm -f /data/local/tmp/$name"

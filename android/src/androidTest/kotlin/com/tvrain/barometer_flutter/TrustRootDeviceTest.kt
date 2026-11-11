@@ -48,6 +48,9 @@ import org.junit.runner.RunWith
  *   synthetic leaf is trusted and the public one is not, so the root set follows that store.
  * - `system-only`: the system store holds only the synthetic CA. From API 34, where the updatable
  *   store exists, nothing changes; before it the system store is the root set.
+ * - `no-store`: both stores are empty, so there is no root set. Only
+ *   [testsThatVerifyCertificatesNeedARootSet] runs: through the channel host, every test that
+ *   verifies a certificate is rejected as `task_unsupported`, while TCP-01 is still admitted.
  */
 @RunWith(AndroidJUnit4::class)
 class TrustRootDeviceTest {
@@ -72,6 +75,7 @@ class TrustRootDeviceTest {
 
     @Test
     fun rootSetFollowsThePlatformStores() {
+        assumeTrue("no root set to follow", scenario != NO_STORE)
         val updatable = Build.VERSION.SDK_INT >= 34
         // Expected certificate_validation of the direct (public) and the intercepted
         // (synthetic CA) handshake.
@@ -102,6 +106,51 @@ class TrustRootDeviceTest {
         assertEquals("intercepted", intercepted,
             validation(owner, DeviceTestDocuments.runTask("trust-proxy", "TLS-01", input, "proxy")))
         assertEquals(1, proxy.connects.get())
+    }
+
+    /**
+     * Admission of the six tests that verify a certificate (TLS-01, HTTP-01, NET-03, DNS-04,
+     * DNS-03 and NET-05) through the channel host, as signed remote packages of a synthetic
+     * issuer permitted every test but the composite NET-05. Without a root set none of them is
+     * registered, so each is `task_unsupported` (decision 0016, REQ-TRUST-0036); with one, each
+     * gets past the test lookup to a later admission class. TCP-01 is admitted either way. Only admission runs.
+     */
+    @Test
+    fun testsThatVerifyCertificatesNeedARootSet() {
+        val now = System.currentTimeMillis()
+        val signer = TestSigner("trust-key", DeviceTestDocuments.REMOTE_ISSUER, 0x51)
+        val base = DeviceTestDocuments.trustDocument("TCP-01", DeviceTestDocuments.TCP_TUPLE)
+        val all = DeviceTestDocuments.edit(base) { root ->
+            val policy = root.getJSONObject("policy")
+            val lists = listOf(policy.getJSONObject("permissions"), policy.getJSONArray("issuers").getJSONObject(0).getJSONObject("permissions"))
+            for (permissions in lists) {
+                TLS_TESTS.filter { it != "NET-05" }.forEach { permissions.getJSONArray("tests").put(JSONObject().put("id", it).put("version", "0.1.0")) }
+            }
+        }
+        val document = DeviceTestDocuments.withRemoteIssuer(all, signer.key(now - 3_600_000L, now + 86_400_000L))
+        val host = BarometerHost(context, HostPolicy { document })
+        val channel = ChannelCaller(host)
+        val defaultScope = File(context.noBackupFilesDir, "barometer/${RecordStore.DEFAULT_SCOPE}")
+        defaultScope.deleteRecursively()
+        try {
+            assertEquals(null, channel.initialize("{}"))
+            fun admit(id: String, test: String, input: JSONObject) = channel.admitRemote(
+                signer.sign(DeviceTestDocuments.runTask(id, test, input).toByteArray(), now - 60_000L),
+            )
+            for (test in TLS_TESTS) {
+                val code = admit("roots-${test.lowercase()}", test, JSONObject()).code
+                if (scenario == NO_STORE) {
+                    assertEquals(test, "task_unsupported", code)
+                } else {
+                    assertTrue("$test: $code", code != null && code != "task_unsupported")
+                }
+            }
+            assertEquals(null, admit("roots-tcp-01", "TCP-01", DeviceTestDocuments.TCP_INPUT).code)
+        } finally {
+            channel.code("close")
+            host.detach()
+            defaultScope.deleteRecursively()
+        }
     }
 
     /** Runs [task] and returns the certificate_validation of its TLS handshake observation. */
@@ -193,5 +242,7 @@ class TrustRootDeviceTest {
         private const val CONNECTION_CODE = "synthetic_proxy"
         private const val TRUSTED = "trusted"
         private const val UNTRUSTED = "untrusted"
+        private const val NO_STORE = "no-store"
+        private val TLS_TESTS = listOf("TLS-01", "HTTP-01", "NET-03", "DNS-04", "DNS-03", "NET-05")
     }
 }
