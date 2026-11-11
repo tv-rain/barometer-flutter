@@ -6,7 +6,7 @@ No measurement result, outcome, device identifier, account, network name or addr
 
 ## Library Under Test
 
-The `Barometer.xcframework.build-info.txt` written by `scripts/build-native.sh apple` at the current pin, used by [Durability, Storage Full and the Nine Measurements](#durability-storage-full-and-the-nine-measurements), [Trust Store on the Device](#trust-store-on-the-device), [Oldest Runtime and `x86_64` Simulator](#oldest-runtime-and-x86_64-simulator), [Host Policy, Proxy and Signed Remote Tasks](#host-policy-proxy-and-signed-remote-tasks) and [Signals, Lifecycle and Linkage Keys](#signals-lifecycle-and-linkage-keys):
+The `Barometer.xcframework.build-info.txt` written by `scripts/build-native.sh apple` at the current pin, used by [Strict JSON](#strict-json), [Durability, Storage Full and the Nine Measurements](#durability-storage-full-and-the-nine-measurements), [Trust Store on the Device](#trust-store-on-the-device), [Oldest Runtime and `x86_64` Simulator](#oldest-runtime-and-x86_64-simulator), [Host Policy, Proxy and Signed Remote Tasks](#host-policy-proxy-and-signed-remote-tasks) and [Signals, Lifecycle and Linkage Keys](#signals-lifecycle-and-linkage-keys):
 
 ```text
 artifact: Barometer.xcframework
@@ -41,6 +41,10 @@ slices:
   ios-arm64_x86_64-simulator
 status: compiled only; not a release, not platform support
 ```
+
+## Strict JSON
+
+Run on 2026-11-10 on an Apple silicon host with Xcode 27.0 and Flutter 3.47.6, with the library above, on an iPhone 17 Pro simulator of the installed iOS 26.2 runtime. The XCTests ran from `example/ios` with the command of [Adapters, TCP-01 and DNS-01](#adapters-tcp-01-and-dns-01) after `flutter build ios --debug --simulator`, limited to `StrictJSONTests`, `HostPolicyTests` and `ChannelTests`: 26 tests, all passed. `StrictJSONTests` (7 tests) checks the strict reader against the library's rules (unique names after unescaping, canonically equivalent names kept apart, framing, text, integer spellings and bounds) and then, through `BarometerBinding.newClient`, that the host reads `policy.generation` and the embedded issuer exactly when the facade accepts the document, with the same value, for the same synthetic cases as the Android record: an escaped name and the largest generation 2^63-1 accepted; duplicate, escaped-equivalent and case-variant names, every other integer spelling and range, a byte-order mark, a trailing value, a lone surrogate escape, a raw control character, invalid UTF-8 and nesting past depth 10 rejected by both; a case-variant `Generation` next to `generation` not read, with the facade rejecting the document. Through the channel host, each rejected document makes `initialize` return `trust_invalid`, `admitTask` and `nextBundle` return `not_initialized` and creates no record store, and a document with escaped spellings of the generation and the issuer initializes and admits an embedded task installed with the issuer the host read. The full XCTest suite on the newest and oldest runtimes runs in the device build workflow.
 
 ## Durability, Storage Full and the Nine Measurements
 
